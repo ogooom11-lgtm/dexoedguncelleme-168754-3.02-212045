@@ -1,0 +1,88 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+class OtpInput extends StatefulWidget {
+  final int length;
+  final ValueChanged<String> onCompleted;
+
+  const OtpInput({super.key, this.length = 8, required this.onCompleted});
+
+  @override
+  State<OtpInput> createState() => _OtpInputState();
+}
+
+class _OtpInputState extends State<OtpInput> {
+  late final List<FocusNode> _nodes;
+  late final List<TextEditingController> _ctls;
+
+  @override
+  void initState() {
+    super.initState();
+    _nodes = List.generate(widget.length, (_) => FocusNode());
+    _ctls = List.generate(widget.length, (_) => TextEditingController());
+  }
+
+  @override
+  void dispose() {
+    for (final n in _nodes) n.dispose();
+    for (final c in _ctls) c.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(int idx, String v) {
+    if (v.length > 1) {
+      // لصق سريع
+      final onlyDigits = v.replaceAll(RegExp(r'[^0-9]'), '');
+      if (onlyDigits.length == widget.length) {
+        for (int i = 0; i < widget.length; i++) {
+          _ctls[i].text = onlyDigits[i];
+        }
+        widget.onCompleted(onlyDigits);
+        return;
+      }
+    }
+    if (v.isEmpty && idx > 0) {
+      _nodes[idx - 1].requestFocus();
+    } else if (v.isNotEmpty && idx < widget.length - 1) {
+      _nodes[idx + 1].requestFocus();
+    }
+    final code = _ctls.map((e) => e.text).join();
+    if (code.length == widget.length) {
+      widget.onCompleted(code);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Directionality(
+      textDirection: TextDirection.ltr, // ترتيب الخانات من اليسار لليمين
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(widget.length, (i) {
+          return Container(
+            width: 42,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            child: TextField(
+              controller: _ctls[i],
+              focusNode: _nodes[i],
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(1)],
+              onChanged: (v) => _onChanged(i, v),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: cs.surface.withOpacity(0.3),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}

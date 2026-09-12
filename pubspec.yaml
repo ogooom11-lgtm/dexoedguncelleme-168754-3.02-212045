@@ -1,0 +1,121 @@
+name: dexoed
+description: تطبيق دروس خاص لإدارة الطلاب والمعلمين والدروس والمدفوعات
+publish_to: "none"
+
+version: 1.7.0+3
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+    
+  permission_handler: ^11.3.1
+  disable_battery_optimization: ^1.1.2
+
+
+
+
+
+  shared_preferences: ^2.3.1
+  app_settings: ^6.1.1
+  android_intent_plus: ^6.0.0
+
+
+
+
+  # ✅ Firebase
+  firebase_core: ^4.1.1
+
+  firebase_auth: ^6.1.0
+
+
+  flutter_secure_storage: ^9.2.4
+
+
+  # ✅ إدارة الحالة
+  provider: ^6.1.2
+
+  # ✅ الترجمة ودعم اللغات
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+
+  # ✅ الرسوم البيانية
+  fl_chart: ^1.1.0
+
+  # ✅ مشاركة المحتوى
+  share_plus: ^12.0.0
+
+  awesome_notifications: ^0.10.1
+  audioplayers: ^6.0.0   # 🔊 لتشغيل صوت المنبه
+
+  audioplayers_android : ^5.2.1
+
+  firebase_messaging: ^16.0.2
+
+  foundation: ^0.0.5
+
+
+  # ✅ سلايد للحذف والإجراءات
+  flutter_slidable: ^4.0.1
+
+  # ✅ إنشاء ملفات PDF والطباعة
+  pdf: ^3.11.3
+  printing: ^5.14.2
+
+  # ✅ التعامل مع مسارات الملفات
+  path_provider: ^2.1.5
+  firebase_database: any
+
+  http: ^1.2.1
+
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^7.0.0
+
+
+  flutter_ringtone_player: ^4.0.0+4
+  wakelock_plus: ^1.2.4
+
+  cloud_firestore: ^6.0.2
+
+  flutter_launcher_icons: ^0.13.1
+
+
+
+
+  # ✅ أيقونات
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - project_root/assets/
+    - project_root/assets/sounds/alarm_sound.mp3
+    - project_root/assets/sounds/lesson_alarm_focus.wav
+    - project_root/assets/sounds/lesson_alarm_soft.wav
+    - project_root/assets/sounds/lesson_notify_chime.wav
+    - project_root/assets/sounds/lesson_notify_soft.wav
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: project_root/assets/fonts/cairo-regular.ttf
+        - asset: project_root/assets/fonts/cairo-bold.ttf
+          weight: 700
+
+
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "project_root/assets/icon/icon.png"
+
