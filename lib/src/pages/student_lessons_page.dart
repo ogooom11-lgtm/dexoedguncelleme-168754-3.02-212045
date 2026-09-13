@@ -1,12 +1,47 @@
+// lib/src/pages/student_lessons_page.dart
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
-import '../providers/auth_provider.dart';
-import 'home_student.dart';
 
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../services/student_repository.dart';
+import '../services/timeline_models.dart';
+import '../theme/app_theme.dart';
+import 'student/student_sheets.dart';
+import 'student/student_widgets.dart';
+
+enum _LessonFilter { all, upcoming, ended, pending, canceled, unpaid }
+
+extension on _LessonFilter {
+  String get label => switch (this) {
+        _LessonFilter.all => 'الكل',
+        _LessonFilter.upcoming => 'القادمة',
+        _LessonFilter.ended => 'المنتهية',
+        _LessonFilter.pending => 'الطلبات',
+        _LessonFilter.canceled => 'الملغاة',
+        _LessonFilter.unpaid => 'غير مدفوعة',
+      };
+
+  IconData get icon => switch (this) {
+        _LessonFilter.all => Icons.all_inclusive_rounded,
+        _LessonFilter.upcoming => Icons.upcoming_rounded,
+        _LessonFilter.ended => Icons.check_circle_outline_rounded,
+        _LessonFilter.pending => Icons.hourglass_top_rounded,
+        _LessonFilter.canceled => Icons.cancel_outlined,
+        _LessonFilter.unpaid => Icons.money_off_rounded,
+      };
+
+  Color? get color => switch (this) {
+        _LessonFilter.upcoming => TimelineStatus.scheduled.color,
+        _LessonFilter.ended => TimelineStatus.ended.color,
+        _LessonFilter.pending => TimelineStatus.pending.color,
+        _LessonFilter.canceled => TimelineStatus.canceled.color,
+        _LessonFilter.unpaid => AppTheme.danger,
+        _ => null,
+      };
+}
+
+/// 📚 دروسي — قائمة مجمّعة حسب الشهر مع فلاتر وبحث.
 class StudentLessonsPage extends StatefulWidget {
   const StudentLessonsPage({super.key});
 
@@ -14,663 +49,251 @@ class StudentLessonsPage extends StatefulWidget {
   State<StudentLessonsPage> createState() => _StudentLessonsPageState();
 }
 
-class _StudentLessonsPageState extends State<StudentLessonsPage>
-    with SingleTickerProviderStateMixin {
-  DateTime? _startDate;
-  DateTime? _endDate;
-  String _filterStatus = "all";
-
-  late final AnimationController _animCtrl =
-  AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
-
-  @override
-  void initState() {
-    super.initState();
-    _animCtrl.forward();
-  }
+class _StudentLessonsPageState extends State<StudentLessonsPage> {
+  _LessonFilter _filter = _LessonFilter.all;
+  String _query = '';
+  bool _searching = false;
+  final _searchCtrl = TextEditingController();
 
   @override
   void dispose() {
-    _animCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
+  List<StudentLesson> _apply(StudentRepository repo) {
+    Iterable<StudentLesson> list = repo.lessons;
+    switch (_filter) {
+      case _LessonFilter.all:
+        break;
+      case _LessonFilter.upcoming:
+        list = list.where((l) => l.isUpcoming || l.isRunning);
+      case _LessonFilter.ended:
+        list = list.where((l) => l.isEnded);
+      case _LessonFilter.pending:
+        list = list.where((l) => l.isPending);
+      case _LessonFilter.canceled:
+        list = list.where((l) => l.status == TimelineStatus.canceled || l.status == TimelineStatus.missed);
+      case _LessonFilter.unpaid:
+        list = list.where((l) => l.isEnded && !l.isPaid);
+    }
+    final q = _query.trim();
+    if (q.isNotEmpty) {
+      list = list.where((l) =>
+          l.note.contains(q) ||
+          l.cancelReason.contains(q) ||
+          TimelineFormat.ymd(l.start).contains(q) ||
+          l.status.label.contains(q));
+    }
+    final out = list.toList();
+    // القادمة تصاعدياً، الباقي تنازلياً
+    if (_filter == _LessonFilter.upcoming || _filter == _LessonFilter.pending) {
+      out.sort((a, b) => a.start.compareTo(b.start));
+    } else {
+      out.sort((a, b) => b.start.compareTo(a.start));
+    }
+    return out;
+  }
+
+  int _count(StudentRepository repo, _LessonFilter f) => switch (f) {
+        _LessonFilter.all => repo.lessons.length,
+        _LessonFilter.upcoming => repo.upcomingLessons.length + (repo.runningLesson == null ? 0 : 1),
+        _LessonFilter.ended => repo.endedLessons.length,
+        _LessonFilter.pending => repo.pendingRequests.length,
+        _LessonFilter.canceled => repo.lessons.where((l) => l.status == TimelineStatus.canceled || l.status == TimelineStatus.missed).length,
+        _LessonFilter.unpaid => repo.unpaidLessons.length,
+      };
+
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final student = auth.currentUser!;
-    final teacherCode = student.teacher ?? "";
-    final dbRef = FirebaseDatabase.instance.ref("users/$teacherCode/schedule");
+    final repo = context.watch<StudentRepository>();
+    final scheme = Theme.of(context).colorScheme;
+    final lessons = _apply(repo);
+
+    // تجميع حسب الشهر
+    final groups = <String, List<StudentLesson>>{};
+    final groupKeys = <String, DateTime>{};
+    for (final l in lessons) {
+      final key = '${l.start.year}-${l.start.month}';
+      groups.putIfAbsent(key, () => []).add(l);
+      groupKeys.putIfAbsent(key, () => DateTime(l.start.year, l.start.month));
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("📖 سجل دروسي"),
-        centerTitle: true,
-        backgroundColor: Colors.indigo.shade600,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeStudent()),
-            );
-          },
-        ),
+        title: _searching
+            ? TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                onChanged: (v) => setState(() => _query = v),
+                decoration: const InputDecoration(
+                  hintText: 'ابحث بالتاريخ أو الملاحظة…',
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+              )
+            : const Text('دروسي'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt),
-            tooltip: "فلترة",
-            onPressed: () => _showFiltersSheet(context),
+            tooltip: _searching ? 'إغلاق البحث' : 'بحث',
+            onPressed: () => setState(() {
+              _searching = !_searching;
+              if (!_searching) {
+                _query = '';
+                _searchCtrl.clear();
+              }
+            }),
+            icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
           ),
         ],
-      ),
-      body: StreamBuilder<DatabaseEvent>(
-        stream: dbRef.onValue,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data?.snapshot.value == null) {
-            return _emptyState("لا يوجد أي دروس بعد");
-          }
-
-          final data = Map<String, dynamic>.from(snapshot.data!.snapshot.value as Map);
-
-          // جلب دروس الطالب الحالي فقط
-          final allLessons = data.entries.where((entry) {
-            return (entry.value["student"] ?? "") == student.code;
-          }).map<Map<String, dynamic>>((entry) {
-            final lesson = Map<String, dynamic>.from(entry.value);
-            lesson["id"] = entry.key;
-            return lesson;
-          }).toList();
-
-          // ترتيب: started فوق
-          allLessons.sort((a, b) {
-            if (a["status"] == "started" && b["status"] != "started") return -1;
-            if (b["status"] == "started" && a["status"] != "started") return 1;
-
-            final da = DateTime.tryParse(a['endTime'] ?? '') ?? DateTime(2000);
-            final db = DateTime.tryParse(b['endTime'] ?? '') ?? DateTime(2000);
-            return db.compareTo(da);
-          });
-
-          // فلترة
-          final filtered = _applyFilters(allLessons);
-
-          if (filtered.isEmpty) {
-            return Expanded(child: _emptyState("لا توجد نتائج مطابقة"));
-          }
-
-          return Column(
-            children: [
-              const SizedBox(height: 8),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 350),
-                  child: ListView.builder(
-                    key: ValueKey(
-                        "${_startDate?.toIso8601String()}-${_endDate?.toIso8601String()}-$_filterStatus"),
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final lesson = filtered[index];
-                      final startTime = _formatTime(lesson['startTime']);
-                      final endTime = _formatTime(lesson['endTime']);
-                      final duration = _formatDuration(lesson['duration']);
-                      final date = (lesson['date'] ?? '').toString();
-                      final status = (lesson['status'] ?? '').toString();
-
-                      final amount = num.tryParse((lesson['amount'] ?? '0').toString()) ?? 0;
-
-                      Widget rightChip;
-                      if (status == "started" &&
-                          (lesson['startTime'] ?? '').toString().isNotEmpty) {
-                        rightChip = RunningTimeChip(
-                            startIso: lesson['startTime'].toString());
-                      } else {
-                        rightChip = _valueChip("$amount ر.ق", false);
-                      }
-
-                      return _animatedLessonCard(
-                        index: index,
-                        child: InkWell(
-                          onTap: () async {
-                            HapticFeedback.selectionClick();
-                            await _showLessonSheet(
-                                context, date, startTime, endTime, duration, lesson);
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Card(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            elevation: status == "started" ? 8 : 5,
-                            shadowColor: Colors.indigo.withOpacity(0.15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.all(16),
-                              leading: Hero(
-                                tag: "avatar_${lesson['id']}",
-                                child: CircleAvatar(
-                                  radius: 26,
-                                  backgroundColor: Colors.indigo.shade100,
-                                  child: const Icon(Icons.book,
-                                      color: Colors.indigo, size: 28),
-                                ),
-                              ),
-                              title: Text(
-                                "📅 $date",
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 18),
-                              ),
-                              subtitle: Text(
-                                "⏱ $startTime ← $endTime ($duration)",
-                                style: TextStyle(
-                                    color: Colors.grey.shade700, height: 1.35),
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  rightChip,
-                                  const SizedBox(width: 6),
-                                  _statusChip(status),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: SizedBox(
+            height: 52,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              children: [
+                for (final f in _LessonFilter.values)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: PillChoice(
+                      label: '${f.label} ${_count(repo, f)}',
+                      icon: f.icon,
+                      color: f.color,
+                      selected: _filter == f,
+                      onTap: () {
+                        timelineHaptic(true);
+                        setState(() => _filter = f);
+                      },
+                    ),
                   ),
-                ),
-              ),
-            ],
-          );
-        },
+              ],
+            ),
+          ),
+        ),
       ),
-    );
-  }
-
-  // ✅ BottomSheet للتفاصيل
-  Future<void> _showLessonSheet(
-      BuildContext context,
-      String date,
-      String startTime,
-      String endTime,
-      String duration,
-      Map<String, dynamic> lesson,
-      ) async {
-    final amount = num.tryParse((lesson['amount'] ?? '0').toString()) ?? 0;
-    final status = (lesson['status'] ?? '').toString();
-
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Hero(
-                        tag: "avatar_${lesson['id']}",
-                        child: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: Colors.indigo.shade200,
-                          child: const Icon(Icons.book, color: Colors.indigo),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          "تفاصيل الدرس",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 18),
-                          textAlign: TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _tile("التاريخ", date, Icons.event),
-                  _tile("الوقت", "$startTime ← $endTime", Icons.schedule),
-                  _tile("المدة", duration, Icons.timelapse),
-                  _tile("المبلغ", "$amount ر.ق", Icons.payments),
-                  _tile("الحالة", _statusLabel(status), Icons.info),
-
-                  // ✅ الملاحظات أو سبب الإلغاء
-                  Builder(builder: (context) {
-                    final note =
-                    (lesson['note'] ?? lesson['cancelReason'] ?? '').toString();
-                    if (note.isEmpty) return const SizedBox.shrink();
-                    return Column(
+      body: !repo.isReady
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: repo.refresh,
+              child: lessons.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       children: [
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.note, color: Colors.indigo),
-                          title: Text(
-                            note,
-                            textAlign: TextAlign.right,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.article, color: Colors.indigo),
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text("الملاحظة"),
-                                  content:
-                                  SingleChildScrollView(child: Text(note)),
-                                  actions: [
-                                    TextButton(
-                                      child: const Text("إغلاق"),
-                                      onPressed: () => Navigator.pop(context),
+                        const SizedBox(height: 60),
+                        TimelineEmptyState(
+                          icon: _filter.icon,
+                          title: _query.isNotEmpty ? 'لا نتائج للبحث' : 'لا توجد دروس هنا',
+                          subtitle: _filter == _LessonFilter.unpaid
+                              ? 'رائع! جميع دروسك المنتهية مسدَّدة.'
+                              : _filter == _LessonFilter.upcoming
+                                  ? 'لا مواعيد قادمة — يمكنك طلب موعد جديد من زر ＋.'
+                                  : null,
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                      itemCount: groups.length,
+                      itemBuilder: (context, gi) {
+                        final key = groups.keys.elementAt(gi);
+                        final items = groups[key]!;
+                        final month = groupKeys[key]!;
+                        final ended = items.where((l) => l.isEnded).toList();
+                        final minutes = ended.fold<int>(0, (s, l) => s + l.minutes);
+                        final amount = ended.fold<double>(0, (s, l) => s + l.amount);
+                        return StaggeredReveal(
+                          index: gi,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      TimelineFormat.isSameMonth(month, DateTime.now()) ? 'هذا الشهر' : TimelineFormat.monthTitle(month),
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                                     ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      decoration: BoxDecoration(color: scheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
+                                      child: Text('${items.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: scheme.primary)),
+                                    ),
+                                    const Spacer(),
+                                    if (ended.isNotEmpty)
+                                      Text(
+                                        '${TimelineFormat.duration(minutes)} • ${TimelineFormat.money(amount)}',
+                                        style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
+                                      ),
                                   ],
                                 ),
-                              );
-                            },
+                              ),
+                              for (final l in items)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: StudentLessonTile(
+                                    lesson: l,
+                                    onTap: () => showStudentLessonSheet(context, lesson: l, repo: repo),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-                ],
-              ),
+                        );
+                      },
+                    ),
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _tile(String title, String value, IconData icon) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: Colors.indigo),
-      title: Text(title, textAlign: TextAlign.right),
-      trailing: Text(
-        value,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-
-  // ✅ نافذة الفلترة
-  Future<void> _showFiltersSheet(BuildContext context) async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text("خيارات الفلترة",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              _filtersArea(),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.check),
-                label: const Text("تطبيق الفلتر"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _startDate = null;
-                    _endDate = null;
-                    _filterStatus = "all";
-                  });
-                  Navigator.pop(context);
-                },
-                icon: const Icon(Icons.clear),
-                label: const Text("حذف الفلاتر"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ✅ منطقة الفلاتر (مستعملة فقط بالنافذة)
-  Widget _filtersArea() {
-    return Column(
-      children: [
-        _DateRangeButton(
-          startDate: _startDate,
-          endDate: _endDate,
-          onPick: (start, end) {
-            setState(() {
-              _startDate = start;
-              _endDate = end;
-            });
-          },
-          onClear: () {
-            setState(() {
-              _startDate = null;
-              _endDate = null;
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        DropdownButton<String>(
-          value: _filterStatus,
-          isExpanded: true,
-          items: const [
-            DropdownMenuItem(value: "all", child: Text("كل الحالات")),
-            DropdownMenuItem(value: "pending", child: Text("بانتظار")),
-            DropdownMenuItem(value: "scheduled", child: Text("مجدولة")),
-            DropdownMenuItem(value: "started", child: Text("جارية")),
-            DropdownMenuItem(value: "ended", child: Text("منتهية")),
-            DropdownMenuItem(value: "canceled", child: Text("ملغاة")),
-          ],
-          onChanged: (v) => setState(() => _filterStatus = v ?? "all"),
-        ),
-      ],
-    );
-  }
-
-  // ✅ فلترة
-  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> all) {
-    return all.where((lesson) {
-      final status = (lesson['status'] ?? '').toString();
-
-      if (_filterStatus != "all" && status != _filterStatus) {
-        return false;
-      }
-
-      final endTimeStr = (lesson['endTime'] ?? '').toString();
-      DateTime? endTime = DateTime.tryParse(endTimeStr);
-
-      if (endTime == null) {
-        final dateStr = (lesson['date'] ?? '').toString();
-        try {
-          endTime = DateFormat('yyyy-MM-dd').parse(dateStr);
-        } catch (_) {}
-      }
-
-      if (_startDate != null && endTime != null && endTime.isBefore(_startDate!)) {
-        return false;
-      }
-      if (_endDate != null &&
-          endTime != null &&
-          endTime.isAfter(_endDate!.add(const Duration(days: 1)).subtract(const Duration(seconds: 1)))) {
-        return false;
-      }
-
-      return true;
-    }).toList();
-  }
-
-
-
-  // ✅ Widgets
-  Widget _valueChip(String text, bool isRunning) {
-    final color = isRunning ? Colors.orange : Colors.green;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.35)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-          color: color.shade700,
-        ),
-      ),
-    );
-  }
-
-  Widget _statusChip(String? status) {
-    final map = {
-      "scheduled": {"label": "📅 مجدولة", "color": Colors.blueAccent},
-      "started": {"label": "▶️ جارية", "color": Colors.orange},
-      "ended": {"label": "✅ منتهية", "color": Colors.green},
-      "canceled": {"label": "❌ ملغاة", "color": Colors.red},
-      "pending": {"label": "⌛ بانتظار", "color": Colors.purple},
-    };
-    final data = map[status] ?? {"label": "غير معروف", "color": Colors.grey};
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: (data["color"] as Color).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: (data["color"] as Color).withOpacity(0.4)),
-      ),
-      child: Text(
-        data["label"].toString(),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: data["color"] as Color,
-        ),
-      ),
-    );
-  }
-
-  Widget _animatedLessonCard({required int index, required Widget child}) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 250 + (index * 30).clamp(0, 300)),
-      curve: Curves.easeOutCubic,
-      builder: (context, v, _) => Transform.translate(
-        offset: Offset(0, (1 - v) * 20),
-        child: Opacity(opacity: v, child: child),
-      ),
-    );
-  }
-
-  Widget _emptyState(String text) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.hourglass_empty, size: 56, color: Colors.indigo.shade200),
-        const SizedBox(height: 10),
-        Text(text, style: const TextStyle(fontSize: 18, color: Colors.grey)),
-      ],
-    );
-  }
-
-  String _formatTime(dynamic isoString) {
-    if (isoString == null || isoString.toString().isEmpty) return "--:--";
-    try {
-      final dt = DateTime.parse(isoString.toString());
-      return DateFormat('HH:mm').format(dt);
-    } catch (_) {
-      return "--:--";
-    }
-  }
-
-  String _formatDuration(dynamic duration) {
-    if (duration == null) return "--:--:--";
-    final totalSeconds = int.tryParse(duration.toString()) ?? 0;
-    final h = (totalSeconds ~/ 3600).toString().padLeft(2, '0');
-    final m = ((totalSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
-    final s = (totalSeconds % 60).toString().padLeft(2, '0');
-    return "$h:$m:$s";
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case "scheduled":
-        return "📅 مجدولة";
-      case "started":
-        return "▶️ جارية";
-      case "ended":
-        return "✅ منتهية";
-      case "canceled":
-        return "❌ ملغاة";
-      case "pending":
-        return "⌛ بانتظار";
-      default:
-        return "غير معروف";
-    }
-  }
-}
-
-// 🔎 زر اختيار التاريخ
-class _DateRangeButton extends StatelessWidget {
-  final DateTime? startDate;
-  final DateTime? endDate;
-  final void Function(DateTime start, DateTime end) onPick;
-  final VoidCallback onClear;
-
-  const _DateRangeButton({
-    required this.startDate,
-    required this.endDate,
-    required this.onPick,
-    required this.onClear,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final text = (startDate == null || endDate == null)
-        ? "حسب التاريخ"
-        : "${DateFormat('yyyy-MM-dd').format(startDate!)} ← ${DateFormat('yyyy-MM-dd').format(endDate!)}";
-
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
-        backgroundColor: Colors.indigo.shade200,
-        foregroundColor: Colors.indigo.shade900,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      onPressed: () async {
-        final now = DateTime.now();
-        final picked = await showDateRangePicker(
-          context: context,
-          firstDate: DateTime(now.year - 3),
-          lastDate: DateTime(now.year + 1),
-          locale: const Locale('ar'),
-          builder: (context, child) {
-            return Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: Colors.indigo,
-                  onPrimary: Colors.white,
-                  surface: Colors.indigo.shade200,
-                ),
-              ),
-              child: child!,
-            );
-          },
-        );
-        if (picked != null) {
-          onPick(picked.start, picked.end);
-          HapticFeedback.lightImpact();
-        }
-      },
-      icon: const Icon(Icons.date_range),
-      label: Row(
-        children: [
-          Expanded(child: Text(text, textAlign: TextAlign.right)),
-          if (startDate != null && endDate != null)
-            IconButton(
-              tooltip: "مسح",
-              onPressed: onClear,
-              icon: const Icon(Icons.close, size: 18),
-            ),
-        ],
-      ),
     );
   }
 }
 
-// ✅ ودجت خاصة لعرض الوقت الجاري
+/// ⏱️ شريحة "قيد التنفيذ" تعرض الوقت المنقضي منذ بداية الدرس (متوافقة مع الاستخدام القديم).
 class RunningTimeChip extends StatefulWidget {
-  final String startIso;
-
   const RunningTimeChip({super.key, required this.startIso});
+  final String startIso;
 
   @override
   State<RunningTimeChip> createState() => _RunningTimeChipState();
 }
 
 class _RunningTimeChipState extends State<RunningTimeChip> {
-  late Timer _timer;
-  Duration _elapsed = Duration.zero;
+  Timer? _t;
 
   @override
   void initState() {
     super.initState();
-    _calculate();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() => _calculate());
-      }
-    });
-  }
-
-  void _calculate() {
-    final parsed = DateTime.tryParse(widget.startIso);
-    if (parsed != null) {
-      final now = DateTime.now();
-      _elapsed = now.difference(parsed);
-    }
+    _t = Timer.periodic(const Duration(seconds: 30), (_) => mounted ? setState(() {}) : null);
   }
 
   @override
   void dispose() {
-    _timer.cancel();
+    _t?.cancel();
     super.dispose();
-  }
-
-  String _formatDuration(Duration d) {
-    final h = d.inHours.toString().padLeft(2, '0');
-    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return "$h:$m:$s";
   }
 
   @override
   Widget build(BuildContext context) {
+    final start = DateTime.tryParse(widget.startIso);
+    final mins = start == null ? 0 : DateTime.now().difference(start).inMinutes.clamp(0, 99999);
+    final color = TimelineStatus.started.color;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withOpacity(0.35)),
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(
-        _formatDuration(_elapsed),
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-          color: Colors.orange,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PulsingDot(color: color),
+          const SizedBox(width: 6),
+          Text('منذ ${TimelineFormat.duration(mins)}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: color)),
+        ],
       ),
     );
   }
