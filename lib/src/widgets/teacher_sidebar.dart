@@ -14,7 +14,7 @@ import '../pages/notifications_debug_page.dart';
 import '../pages/alarm_settings_page.dart';
 import '../pages/today_recurring_page.dart';
 import '../pages/recurring_schedules_page.dart';
-import '../pages/teacher_weekly_schedule_page.dart';
+import '../pages/teacher_timeline_page.dart';
 import '../pages/teacher_profits_page.dart';
 import '../services/notification_orchestrator.dart';
 import '../theme/app_theme.dart';
@@ -106,10 +106,10 @@ class TeacherSidebar extends StatelessWidget {
                 ),
                 _buildDrawerItem(
                   context,
-                  icon: Icons.calendar_view_week_rounded,
-                  title: "الجدول الأسبوعي",
+                  icon: Icons.view_timeline_rounded,
+                  title: "الجدول الزمني",
                   color: Colors.cyan,
-                  page: const TeacherWeeklySchedulePage(),
+                  page: const TeacherTimelinePage(),
                 ),
                 _buildDrawerItem(
                   context,
