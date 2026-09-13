@@ -25,6 +25,7 @@ import 'src/pages/teacher_balance_page.dart';
 import 'src/pages/teacher_lessons_page.dart';
 import 'src/pages/teacher_schedule_page.dart';
 import 'src/pages/teacher_students_page.dart';
+import 'src/pages/teacher_timeline_page.dart';
 import 'src/pages/today_recurring_page.dart';
 import 'src/providers/auth_provider.dart';
 import 'src/providers/theme_provider.dart';
@@ -147,6 +148,7 @@ class DoroosKhasApp extends StatelessWidget {
               '/teacher_schedule': (_) => const TeacherSchedulePage(),
               '/teacher_lessons': (_) => const TeacherLessonsPage(),
               '/teacher_balance': (_) => const TeacherBalancePage(),
+              '/teacher_timeline': (_) => const TeacherTimelinePage(),
               '/alarm_end': (context) {
                 final args = ModalRoute.of(context)!.settings.arguments
                     as Map<String, dynamic>;

@@ -438,6 +438,13 @@ class _HomeTeacherState extends State<HomeTeacher> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: "الجدول الزمني",
+            icon: const Icon(Icons.view_timeline_rounded),
+            onPressed: () => Navigator.pushNamed(context, '/teacher_timeline'),
+          ),
+        ],
       ),
       floatingActionButton: _buildFabColumn(),
       body: _isLoading
