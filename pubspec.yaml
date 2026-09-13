@@ -2,7 +2,7 @@ name: dexoed
 description: تطبيق دروس خاص لإدارة الطلاب والمعلمين والدروس والمدفوعات
 publish_to: "none"
 
-version: 1.9.0+5
+version: 2.0.0+6
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

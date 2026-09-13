@@ -200,6 +200,7 @@ class _StartupGateState extends State<_StartupGate> {
     if (user != null) {
       // تحديث بيانات المستخدم لاحقاً في الخلفية دون تعطيل الواجهة
       unawaited(auth.refreshCurrentUserSilently());
+      auth.watchDisabled();
       unawaited(_handleInitialNotificationAction(user.role));
 
       if (user.role == UserRole.admin) return const HomeAdmin();

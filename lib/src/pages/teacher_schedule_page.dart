@@ -9,6 +9,7 @@ import 'teacher_lesson_timer_page.dart';
 import 'teacher_add_schedule_page.dart';
 import '../services/notification_service.dart';
 import 'teacher_edit_schedule_page.dart';
+import '../services/permission_guard.dart';
 
 class TeacherSchedulePage extends StatefulWidget {
   const TeacherSchedulePage({super.key});
@@ -42,6 +43,7 @@ class _TeacherSchedulePageState extends State<TeacherSchedulePage> {
     );
 
     if (result == true) {
+      if (!await PermissionGuard.check(context, TeacherPermission.deleteLessons)) return;
       final dbRef =
           FirebaseDatabase.instance.ref("users/$teacherCode/schedule/$key");
       await dbRef.remove();

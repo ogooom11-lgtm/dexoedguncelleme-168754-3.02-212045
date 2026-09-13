@@ -13,6 +13,7 @@ import '../services/timeline_models.dart';
 import '../theme/app_theme.dart';
 import 'student/student_sheets.dart';
 import 'student/student_widgets.dart';
+import '../services/permission_guard.dart';
 
 /// 👤 حسابي — بطاقة الطالب، الإنجازات، بيانات التواصل، معلومات المعلم، الإعدادات.
 class StudentProfilePage extends StatelessWidget {
@@ -81,7 +82,11 @@ class StudentProfilePage extends StatelessWidget {
         : repo.endedLessons.map((l) => l.start).reduce((a, b) => a.isBefore(b) ? a : b);
     final f = repo.finance;
 
-    return Scaffold(
+    return StreamBuilder<PlatformSettings>(
+      stream: PlatformGate.watch(),
+      builder: (context, snap) {
+        final canEditContact = (snap.data ?? PlatformGate.current).allowStudentContactEdit;
+        return Scaffold(
       appBar: AppBar(title: const Text('حسابي')),
       body: ListView(
         physics: const BouncingScrollPhysics(),
@@ -186,12 +191,12 @@ class StudentProfilePage extends StatelessWidget {
           ),
 
           // ===== بيانات التواصل =====
-          SectionTitle(title: 'بيانات التواصل', icon: Icons.contact_phone_outlined, actionLabel: 'تعديل', onAction: () => _editContact(context, repo)),
+          SectionTitle(title: 'بيانات التواصل', icon: Icons.contact_phone_outlined, actionLabel: canEditContact ? 'تعديل' : null, onAction: canEditContact ? () => _editContact(context, repo) : null),
           StaggeredReveal(
             index: 2,
             child: SoftCard(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              onTap: () => _editContact(context, repo),
+              onTap: canEditContact ? () => _editContact(context, repo) : null,
               child: Column(
                 children: [
                   InfoRow(icon: Icons.phone_rounded, label: 'الهاتف', value: (repo.phone ?? '').isEmpty ? 'غير مضاف' : repo.phone!),
@@ -297,6 +302,8 @@ class StudentProfilePage extends StatelessWidget {
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

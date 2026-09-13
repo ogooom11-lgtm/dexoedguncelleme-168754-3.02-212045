@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../providers/auth_provider.dart';
 import '../services/pdf_export_service.dart';
 import '../theme/app_theme.dart';
+import '../services/permission_guard.dart';
 
 class TeacherLessonsPage extends StatefulWidget {
   const TeacherLessonsPage({super.key, this.initialStudentId});
@@ -625,6 +626,8 @@ class _TeacherLessonsPageState extends State<TeacherLessonsPage>
 
           final filtered = _applyFilters(lessons);
 
+          if (!await PermissionGuard.check(context, TeacherPermission.exportPdf)) return;
+          if (!context.mounted) return;
           final service = PdfExportService(
             students: _students,
             selectedStudentId: _selectedStudentId,

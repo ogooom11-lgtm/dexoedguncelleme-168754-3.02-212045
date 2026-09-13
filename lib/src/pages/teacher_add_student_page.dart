@@ -4,6 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import '../providers/auth_provider.dart';
+import '../services/permission_guard.dart';
 
 class TeacherAddStudentPage extends StatefulWidget {
   const TeacherAddStudentPage({super.key});
@@ -37,6 +38,11 @@ class _TeacherAddStudentPageState extends State<TeacherAddStudentPage> {
 
   Future<void> _addStudent() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!await PermissionGuard.check(context, TeacherPermission.addStudents,
+        teacherCode: context.read<AuthProvider>().currentUser?.code)) {
+      return;
+    }
+    if (!mounted) return;
     if (_gender == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("❌ يرجى تحديد الجنس")),

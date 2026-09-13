@@ -7,6 +7,7 @@ import 'edit_schedule_page.dart'; // تأكد من المسار الصحيح ل�
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/recurrence_utils.dart';
+import '../services/permission_guard.dart';
 // تأكد من استيراد المودل الخاص بك هنا بشكل صحيح
 // import '../models/recurring_schedule.dart'; 
 
@@ -79,6 +80,8 @@ class _RecurringSchedulesPageState extends State<RecurringSchedulesPage> {
 
   // --- منطق الحذف ---
   Future<void> _deleteItem(RecurringSchedule item) async {
+    if (!await PermissionGuard.check(context, TeacherPermission.recurringSchedules)) return;
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

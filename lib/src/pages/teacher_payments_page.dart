@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/pdf_export_service_payments.dart';
+import '../services/permission_guard.dart';
 
 class TeacherPaymentsPage extends StatefulWidget {
   const TeacherPaymentsPage({super.key});
@@ -314,6 +315,8 @@ class _TeacherPaymentsPageState extends State<TeacherPaymentsPage>
 
   /// حذف دفعة (يستخدمه أيضاً زر الحذف من التفاصيل)
   Future<void> _deletePayment(Map<String, dynamic> p) async {
+    if (!await PermissionGuard.check(context, TeacherPermission.recordPayments)) return;
+    if (!mounted) return;
     try {
       await dbRef.child(p['studentCode']).child(p['id']).remove();
       if (mounted) {
@@ -654,6 +657,8 @@ class _TeacherPaymentsPageState extends State<TeacherPaymentsPage>
 
     final filtered = _applyFilters(payments);
 
+    if (!await PermissionGuard.check(context, TeacherPermission.exportPdf)) return;
+    if (!mounted) return;
     final pdfService = PdfExportServicePayments(
       students: _students,
       selectedStudentId: null,

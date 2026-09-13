@@ -14,6 +14,7 @@ import 'student_lessons_page.dart';
 import 'student_payments_page.dart';
 import 'student_profile_page.dart';
 import 'student_request_lesson_page.dart';
+import '../services/permission_guard.dart';
 
 /// 🎓 الشاشة الرئيسية للطالب — مستودع بيانات واحد مشترك بين التبويبات،
 /// شريط تنقّل سفلي عصري، وزر طلب موعد عائم.
@@ -69,42 +70,48 @@ class _HomeStudentState extends State<HomeStudent> {
         builder: (context) {
           final pending = context.select<StudentRepository, int>((r) => r.pendingRequests.length);
           final unpaid = context.select<StudentRepository, int>((r) => r.unpaidLessons.length);
-          return Scaffold(
-            extendBody: true,
-            body: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SlideTransition(
-                  position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(anim),
-                  child: child,
-                ),
-              ),
-              child: KeyedSubtree(
-                key: ValueKey(_index),
-                child: switch (_index) {
-                  0 => _StudentDashboard(onTab: _go, onRequest: _request),
-                  1 => const StudentLessonsPage(),
-                  2 => const StudentPaymentsPage(),
-                  _ => const StudentProfilePage(),
-                },
-              ),
-            ),
-            floatingActionButton: _index == 3
-                ? null
-                : FloatingActionButton.extended(
-                    heroTag: 'student_request_fab',
-                    onPressed: _request,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('طلب موعد'),
+          return StreamBuilder<PlatformSettings>(
+            stream: PlatformGate.watch(),
+            builder: (context, snap) {
+              final allowRequests = (snap.data ?? PlatformGate.current).allowStudentRequests;
+              return Scaffold(
+                extendBody: true,
+                body: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(anim),
+                      child: child,
+                    ),
                   ),
-            bottomNavigationBar: _StudentNavBar(
-              index: _index,
-              onTap: _go,
-              badges: {1: pending, 2: unpaid},
-            ),
+                  child: KeyedSubtree(
+                    key: ValueKey(_index),
+                    child: switch (_index) {
+                      0 => _StudentDashboard(onTab: _go, onRequest: _request, allowRequests: allowRequests),
+                      1 => const StudentLessonsPage(),
+                      2 => const StudentPaymentsPage(),
+                      _ => const StudentProfilePage(),
+                    },
+                  ),
+                ),
+                floatingActionButton: _index == 3 || !allowRequests
+                    ? null
+                    : FloatingActionButton.extended(
+                        heroTag: 'student_request_fab',
+                        onPressed: _request,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('طلب موعد'),
+                      ),
+                bottomNavigationBar: _StudentNavBar(
+                  index: _index,
+                  onTap: _go,
+                  badges: {1: pending, 2: unpaid},
+                ),
+              );
+            },
           );
         },
       ),
@@ -243,9 +250,10 @@ class _NavItem extends StatelessWidget {
 // =====================================================================
 
 class _StudentDashboard extends StatefulWidget {
-  const _StudentDashboard({required this.onTab, required this.onRequest});
+  const _StudentDashboard({required this.onTab, required this.onRequest, this.allowRequests = true});
   final ValueChanged<int> onTab;
   final VoidCallback onRequest;
+  final bool allowRequests;
 
   @override
   State<_StudentDashboard> createState() => _StudentDashboardState();
@@ -425,12 +433,13 @@ class _StudentDashboardState extends State<_StudentDashboard> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+                  const AnnouncementBanner(forTeacher: false, margin: EdgeInsets.only(bottom: 12)),
                   // ===== الدرس الجاري / القادم =====
                   if (running != null)
                     StaggeredReveal(index: 0, child: _LiveCard(lesson: running, onTap: () => showStudentLessonSheet(context, lesson: running, repo: repo)))
                   else if (next != null)
                     StaggeredReveal(index: 0, child: _NextCard(lesson: next, onTap: () => showStudentLessonSheet(context, lesson: next, repo: repo)))
-                  else if (repo.isReady)
+                  else if (repo.isReady && widget.allowRequests)
                     StaggeredReveal(
                       index: 0,
                       child: SoftCard(
@@ -481,11 +490,17 @@ class _StudentDashboardState extends State<_StudentDashboard> {
                     index: 2,
                     child: Row(
                       children: [
-                        _Quick(icon: Icons.add_circle_rounded, label: 'طلب موعد', color: scheme.primary, onTap: widget.onRequest),
-                        const SizedBox(width: 8),
+                        if (widget.allowRequests) ...[
+                          _Quick(icon: Icons.add_circle_rounded, label: 'طلب موعد', color: scheme.primary, onTap: widget.onRequest),
+                          const SizedBox(width: 8),
+                        ],
                         _Quick(icon: Icons.receipt_long_rounded, label: 'كشف حساب', color: AppTheme.success, onTap: () => shareStatement(context, repo)),
                         const SizedBox(width: 8),
                         _Quick(icon: Icons.school_rounded, label: 'معلمي', color: const Color(0xFF06B6D4), onTap: () => widget.onTab(3)),
+                        if (!widget.allowRequests) ...[
+                          const SizedBox(width: 8),
+                          _Quick(icon: Icons.menu_book_rounded, label: 'دروسي', color: const Color(0xFF8B5CF6), onTap: () => widget.onTab(1)),
+                        ],
                       ],
                     ),
                   ),

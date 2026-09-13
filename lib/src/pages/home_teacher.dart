@@ -20,6 +20,7 @@ import '../services/alarm_preferences.dart';
 import '../services/notification_service_wrapper.dart';
 import '../services/recurrence_utils.dart';
 import 'today_recurring_page.dart';
+import '../services/permission_guard.dart';
 
 class HomeTeacher extends StatefulWidget {
   const HomeTeacher({super.key});
@@ -62,6 +63,12 @@ class _HomeTeacherState extends State<HomeTeacher> {
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final code = context.read<AuthProvider>().currentUser?.code ?? '';
+      if (code.isNotEmpty) PermissionGuard.start(code);
+    });
 
     _shrinkTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _fabExpanded = false);
@@ -464,6 +471,7 @@ class _HomeTeacherState extends State<HomeTeacher> {
                   150,
                 ),
                 children: [
+                  const AnnouncementBanner(forTeacher: true, margin: EdgeInsets.only(bottom: 12)),
                   _buildHeroCard(context, teacherName),
                   const SizedBox(height: 14),
                   _buildStatsRow(context),
@@ -774,7 +782,9 @@ class _HomeTeacherState extends State<HomeTeacher> {
                     heroTag: 'addStudent',
                     icon: const Icon(Icons.person_add),
                     label: const Text("إضافة طالب"),
-                    onPressed: () {
+                    onPressed: () async {
+                      if (!await PermissionGuard.check(context, TeacherPermission.addStudents)) return;
+                      if (!context.mounted) return;
                       Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -786,7 +796,9 @@ class _HomeTeacherState extends State<HomeTeacher> {
                     heroTag: 'addStudent',
                     mini: true,
                     child: const Icon(Icons.person_add),
-                    onPressed: () {
+                    onPressed: () async {
+                      if (!await PermissionGuard.check(context, TeacherPermission.addStudents)) return;
+                      if (!context.mounted) return;
                       Navigator.push(
                           context,
                           MaterialPageRoute(

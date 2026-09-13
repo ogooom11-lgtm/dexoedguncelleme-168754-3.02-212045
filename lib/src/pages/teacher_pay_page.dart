@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import '../services/permission_guard.dart';
 
 class TeacherPayPage extends StatefulWidget {
   final String teacherCode;
@@ -32,6 +33,11 @@ class _TeacherPayPageState extends State<TeacherPayPage> {
   }
 
   Future<void> _savePayment() async {
+    if (!await PermissionGuard.check(context, TeacherPermission.recordPayments,
+        teacherCode: widget.teacherCode)) {
+      return;
+    }
+    if (!mounted) return;
     final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -73,7 +73,9 @@ class _LoginPageState extends State<LoginPage>
 
     try {
       // ⚡ الدخول = قراءة سجل واحد فقط. لا تحليل دروس ولا جدولة تنبيهات.
-      final user = await context.read<AuthProvider>().signInWithCode(code);
+      final auth = context.read<AuthProvider>();
+      final user = await auth.signInWithCode(code);
+      auth.watchDisabled();
       if (!mounted) return;
 
       final route = switch (user.role) {

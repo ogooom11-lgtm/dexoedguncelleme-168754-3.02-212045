@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../providers/auth_provider.dart';
 import '../services/alarm_preferences.dart';
 import '../services/notification_service_wrapper.dart';
+import '../services/permission_guard.dart';
 
 class TeacherAddSchedulePage extends StatefulWidget {
   const TeacherAddSchedulePage({super.key});
@@ -183,6 +184,13 @@ class _TeacherAddSchedulePageState extends State<TeacherAddSchedulePage> {
     final auth = context.read<AuthProvider>();
     final teacher = auth.currentUser!;
     final teacherCode = teacher.code;
+
+    if (_repeatType != "none" &&
+        !await PermissionGuard.check(context, TeacherPermission.recurringSchedules,
+            teacherCode: teacherCode)) {
+      return;
+    }
+    if (!mounted) return;
 
     final startDateTime = _slotIndexToDate(_startIndex!);
     final endDateTime = _slotIndexToDate(_endIndex!);

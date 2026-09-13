@@ -327,11 +327,14 @@ class TimelineFormat {
     return '$m دقيقة';
   }
 
+  /// رمز العملة المعروض في كل التطبيق (قابل للتغيير من إعدادات الإدارة).
+  static String currency = 'ر.ق';
+
   static String money(num value) {
     final rounded = value.roundToDouble() == value
         ? value.toStringAsFixed(0)
         : value.toStringAsFixed(1);
-    return '$rounded ر.ق';
+    return '$rounded $currency';
   }
 
   /// "اليوم • الأربعاء 12 سبتمبر"

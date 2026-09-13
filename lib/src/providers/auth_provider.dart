@@ -1,4 +1,5 @@
 // lib/src/providers/auth_provider.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -9,6 +10,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/role.dart';
 import '../models/user.dart';
+import '../utils/app_navigator.dart' show navigatorKey;
 
 /// إدارة تسجيل الدخول بالكود (8 أرقام).
 /// ✅ لا يوجد أي منطق تحقق من البريد الإلكتروني.
@@ -27,6 +29,9 @@ class AuthProvider extends ChangeNotifier {
   AppUser? get currentUser => _currentUser;
 
   bool get isLoggedIn => _currentUser != null;
+
+  /// يصبح true عندما تُنهى الجلسة لأن الإدارة عطّلت الحساب.
+  bool wasDisabled = false;
 
   // ===================== التخزين المحلي =====================
 
@@ -72,7 +77,37 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  StreamSubscription<DatabaseEvent>? _disabledSub;
+
+  /// مراقبة لحظية لحقل `disabled` — إن عطّلت الإدارة الحساب تُنهى الجلسة فوراً.
+  void watchDisabled() {
+    _disabledSub?.cancel();
+    final code = _currentUser?.code;
+    if (code == null || code.isEmpty) return;
+    _disabledSub = _rtdb.child('users/$code/disabled').onValue.listen((e) {
+      if (e.snapshot.value == true) _forceLogoutDisabled();
+    }, onError: (Object _) {});
+  }
+
+  Future<void> _forceLogoutDisabled() async {
+    if (_currentUser == null) return;
+    wasDisabled = true;
+    await signOut();
+    final nav = navigatorKey.currentState;
+    if (nav != null) {
+      nav.pushNamedAndRemoveUntil('/login', (_) => false);
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null) {
+        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
+          const SnackBar(content: Text('تم تعطيل حسابك من الإدارة')),
+        );
+      }
+    }
+  }
+
   Future<void> signOut() async {
+    _disabledSub?.cancel();
+    _disabledSub = null;
     _currentUser = null;
     try {
       if (kIsWeb) {
@@ -95,6 +130,10 @@ class AuthProvider extends ChangeNotifier {
           await _rtdb.child('users/${user.code}').get().timeout(networkTimeout);
       if (!snap.exists || snap.value is! Map) return;
       final data = Map<String, dynamic>.from(snap.value as Map);
+      if (data['disabled'] == true) {
+        await _forceLogoutDisabled();
+        return;
+      }
       _currentUser = user.copyWith(
         name: (data['name'] ?? user.name).toString(),
         role: _roleFromString((data['role'] ?? user.role.name).toString()),
@@ -124,6 +163,10 @@ class AuthProvider extends ChangeNotifier {
     if (directSnap.exists && directSnap.value is Map) {
       final data = Map<String, dynamic>.from(directSnap.value as Map);
       final role = _roleFromString((data['role'] ?? 'student').toString());
+
+      if (data['disabled'] == true) {
+        throw Exception('هذا الحساب معطّل من الإدارة');
+      }
 
       if (forceRole != null && role != forceRole) {
         throw Exception('هذا الكود لا يخص هذا الدور');

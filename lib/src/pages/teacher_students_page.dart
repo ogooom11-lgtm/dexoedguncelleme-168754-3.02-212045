@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../providers/auth_provider.dart';
+import '../services/permission_guard.dart';
 
 class TeacherStudentsPage extends StatefulWidget {
   const TeacherStudentsPage({super.key});
@@ -140,6 +141,8 @@ class _TeacherStudentsPageState extends State<TeacherStudentsPage> {
                         if (value == "profile") {
                           _openProfile(context, teacherCode, code, student);
                         } else if (value == "edit") {
+                          if (!await PermissionGuard.check(context, TeacherPermission.editRates, teacherCode: teacherCode)) return;
+                          if (!context.mounted) return;
                           _openEditStudent(context, teacherCode, code, student);
                         } else if (value == "share") {
                           final message =
@@ -157,6 +160,8 @@ class _TeacherStudentsPageState extends State<TeacherStudentsPage> {
                             );
                           }
                         } else if (value == "delete") {
+                          if (!await PermissionGuard.check(context, TeacherPermission.deleteStudents, teacherCode: teacherCode)) return;
+                          if (!context.mounted) return;
                           await _attemptDeleteStudent(context, teacherCode, code, name);
                         }
                       },

@@ -1,13 +1,22 @@
-import 'dart:ui' as ui;
+// lib/src/pages/home_admin.dart
+import 'dart:async';
 
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
-import 'account_details_page.dart';
-import 'add_teacher_page.dart';
+import '../services/admin_repository.dart';
+import '../services/timeline_models.dart';
+import '../theme/app_theme.dart';
+import 'admin/admin_directory_tab.dart';
+import 'admin/admin_settings_tab.dart';
+import 'admin/admin_sheets.dart';
+import 'admin/admin_student_page.dart';
+import 'admin/admin_teacher_page.dart';
+import 'admin/admin_widgets.dart';
 
+/// 🛡️ لوحة الإدارة — مستودع واحد مشترك، ثلاثة تبويبات (نظرة عامة / الدليل / الإعدادات)
+/// وزر إنشاء سريع.
 class HomeAdmin extends StatefulWidget {
   const HomeAdmin({super.key});
 
@@ -16,576 +25,540 @@ class HomeAdmin extends StatefulWidget {
 }
 
 class _HomeAdminState extends State<HomeAdmin> {
-  final _searchController = TextEditingController();
-  String _roleFilter = 'all';
+  int _index = 0;
+  AdminRepository? _repo;
+  final _dirKey = GlobalKey<AdminDirectoryTabState>();
+  DirView _dirView = DirView.byTeacher;
+  String? _dirQuick;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final u = context.read<AuthProvider>().currentUser;
+    final code = u?.code ?? '';
+    if (_repo == null || _repo!.adminCode != code) {
+      _repo?.dispose();
+      _repo = AdminRepository(adminCode: code, adminName: u?.name ?? '')..start();
+    }
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _repo?.dispose();
+    super.dispose();
+  }
+
+  void _go(int i) {
+    if (i == _index) return;
+    timelineHaptic(true);
+    setState(() => _index = i);
+  }
+
+  /// فتح الدليل على عرض/فلتر محدد (من بطاقات النظرة العامة).
+  void _openDirectory(DirView view, {String? quick}) {
+    setState(() {
+      _dirView = view;
+      _dirQuick = quick;
+      _index = 1;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _dirKey.currentState?.showView(view, quick: quick));
+  }
+
+  Future<void> _create() async {
+    final repo = _repo!;
+    final what = await showStudentSheet<String>(
+      context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SheetHeader(title: 'إنشاء جديد'),
+            const SizedBox(height: 8),
+            _CreateOption(icon: Icons.co_present_rounded, color: RoleColors.teacher, title: 'معلم', subtitle: 'حساب معلم جديد مع صلاحيات', onTap: () => Navigator.pop(ctx, 'teacher')),
+            _CreateOption(icon: Icons.school_rounded, color: RoleColors.student, title: 'طالب', subtitle: 'يُضاف إلى معلم تختاره', onTap: () => Navigator.pop(ctx, 'student')),
+            _CreateOption(icon: Icons.shield_rounded, color: RoleColors.admin, title: 'حساب إدارة', subtitle: 'مدير إضافي للوحة', onTap: () => Navigator.pop(ctx, 'admin')),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || what == null) return;
+    switch (what) {
+      case 'teacher':
+        await showCreateTeacherSheet(context, repo);
+      case 'admin':
+        await showCreateAdminSheet(context, repo);
+      case 'student':
+        if (repo.teachers.isEmpty) {
+          adminToast(context, 'أضف معلماً أولاً', error: true);
+          return;
+        }
+        final code = await _pickTeacher(repo);
+        if (code != null && mounted) await showStudentFormSheet(context, repo, teacherCode: code);
+    }
+  }
+
+  Future<String?> _pickTeacher(AdminRepository repo) {
+    return showStudentSheet<String>(
+      context,
+      builder: (ctx) {
+        final scheme = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SheetHeader(title: 'اختر المعلم'),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 380),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final t in repo.teachers)
+                      ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        leading: InitialAvatar(name: t.name, color: teacherHue(t.code), size: 40),
+                        title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                        subtitle: Text('${t.students.length} طالب', style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                        trailing: Icon(Icons.chevron_left_rounded, color: scheme.outline),
+                        onTap: () => Navigator.pop(ctx, t.code),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = _repo!;
+    return ChangeNotifierProvider<AdminRepository>.value(
+      value: repo,
+      child: Builder(
+        builder: (context) {
+          final pending = context.select<AdminRepository, int>((r) => r.totalPending);
+          return Scaffold(
+            extendBody: true,
+            body: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(anim), child: child),
+              ),
+              child: KeyedSubtree(
+                key: ValueKey(_index),
+                child: switch (_index) {
+                  0 => _AdminDashboard(onOpenDirectory: _openDirectory, onCreate: _create),
+                  1 => AdminDirectoryTab(key: _dirKey, initialView: _dirView, initialQuick: _dirQuick),
+                  _ => const AdminSettingsTab(),
+                },
+              ),
+            ),
+            floatingActionButton: _index == 2
+                ? null
+                : FloatingActionButton.extended(
+                    heroTag: 'admin_create_fab',
+                    onPressed: _create,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('إنشاء'),
+                  ),
+            bottomNavigationBar: _AdminNavBar(index: _index, onTap: _go, badges: {1: pending}),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CreateOption extends StatelessWidget {
+  const _CreateOption({required this.icon, required this.color, required this.title, required this.subtitle, required this.onTap});
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PressScale(
+      onTap: onTap,
+      scale: 0.98,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: color.withValues(alpha: 0.2))),
+        child: Row(
+          children: [
+            Container(width: 42, height: 42, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                  Text(subtitle, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_left_rounded, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// شريط التنقل
+// =====================================================================
+
+class _AdminNavBar extends StatelessWidget {
+  const _AdminNavBar({required this.index, required this.onTap, required this.badges});
+  final int index;
+  final ValueChanged<int> onTap;
+  final Map<int, int> badges;
+
+  static const _items = [
+    (Icons.space_dashboard_outlined, Icons.space_dashboard_rounded, 'نظرة عامة'),
+    (Icons.account_tree_outlined, Icons.account_tree_rounded, 'الدليل'),
+    (Icons.settings_outlined, Icons.settings_rounded, 'الإعدادات'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+      child: Container(
+        height: 66,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF181C26) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.35 : 0.1), blurRadius: 18, offset: const Offset(0, 6))],
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < _items.length; i++)
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onTap(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+                    decoration: BoxDecoration(color: index == i ? scheme.primary.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.circular(18)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(index == i ? _items[i].$2 : _items[i].$1, key: ValueKey(index == i), color: index == i ? scheme.primary : scheme.onSurfaceVariant, size: 23),
+                            ),
+                            if ((badges[i] ?? 0) > 0)
+                              PositionedDirectional(
+                                top: -4,
+                                end: -6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  constraints: const BoxConstraints(minWidth: 16),
+                                  decoration: BoxDecoration(color: TimelineStatus.pending.color, borderRadius: BorderRadius.circular(999), border: Border.all(color: scheme.surface, width: 1.5)),
+                                  child: Text('${badges[i]}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, height: 1.2)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                          child: index == i
+                              ? Padding(padding: const EdgeInsetsDirectional.only(start: 6), child: Text(_items[i].$3, maxLines: 1, style: TextStyle(color: scheme.primary, fontSize: 12, fontWeight: FontWeight.w800)))
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// النظرة العامة
+// =====================================================================
+
+class _AdminDashboard extends StatefulWidget {
+  const _AdminDashboard({required this.onOpenDirectory, required this.onCreate});
+  final void Function(DirView view, {String? quick}) onOpenDirectory;
+  final VoidCallback onCreate;
+
+  @override
+  State<_AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends State<_AdminDashboard> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => mounted ? setState(() {}) : null);
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final repo = context.watch<AdminRepository>();
     final auth = context.watch<AuthProvider>();
-    final dbRef = FirebaseDatabase.instance.ref("users");
-
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("لوحة الإدارة"),
-          actions: [
-            IconButton(
-              tooltip: 'إضافة معلم',
-              onPressed: () => _openAddTeacher(context),
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-            ),
-          ],
-        ),
-        drawer: _AdminDrawer(
-          name: auth.currentUser?.name ?? "مدير",
-          email: auth.currentUser?.email ?? "no-email",
-          onAddTeacher: () => _openAddTeacher(context),
-          onLogout: () {
-            auth.signOut();
-            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-          },
-        ),
-        body: StreamBuilder<DatabaseEvent>(
-          stream: dbRef.onValue,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final accounts = _parseAccounts(snapshot.data?.snapshot.value);
-            final filtered = _filterAccounts(accounts);
-
-            if (accounts.isEmpty) {
-              return _AdminEmptyState(
-                  onAddTeacher: () => _openAddTeacher(context));
-            }
-
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 1100
-                    ? 3
-                    : constraints.maxWidth >= 720
-                        ? 2
-                        : 1;
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  children: [
-                    _AdminHeader(
-                      name: auth.currentUser?.name ?? 'مدير',
-                      total: accounts.length,
-                      onAddTeacher: () => _openAddTeacher(context),
-                    ),
-                    const SizedBox(height: 12),
-                    _StatsBand(accounts: accounts),
-                    const SizedBox(height: 12),
-                    _FiltersBar(
-                      controller: _searchController,
-                      roleFilter: _roleFilter,
-                      onSearchChanged: (_) => setState(() {}),
-                      onRoleChanged: (value) =>
-                          setState(() => _roleFilter = value),
-                    ),
-                    const SizedBox(height: 12),
-                    if (filtered.isEmpty)
-                      const _NoResults()
-                    else
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filtered.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: columns == 1 ? 3.25 : 2.75,
-                        ),
-                        itemBuilder: (context, index) {
-                          final account = filtered[index];
-                          return _AccountCard(
-                            account: account,
-                            onOpen: () => _openAccount(context, account),
-                          );
-                        },
-                      ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  List<Map<String, dynamic>> _parseAccounts(Object? value) {
-    if (value is! Map) return [];
-    final data = Map<String, dynamic>.from(value);
-    final accounts = data.entries.map((entry) {
-      final userMap = entry.value is Map
-          ? Map<String, dynamic>.from(entry.value as Map)
-          : <String, dynamic>{};
-      return {
-        "id": entry.key,
-        "name": userMap["name"] ?? "مجهول",
-        "role": userMap["role"] ?? "student",
-        "email": userMap["email"] ?? "",
-      };
-    }).toList();
-    accounts
-        .sort((a, b) => a["name"].toString().compareTo(b["name"].toString()));
-    return accounts;
-  }
-
-  List<Map<String, dynamic>> _filterAccounts(
-      List<Map<String, dynamic>> accounts) {
-    final query = _searchController.text.trim().toLowerCase();
-    return accounts.where((account) {
-      final role = account["role"].toString();
-      final matchesRole = _roleFilter == 'all' || role == _roleFilter;
-      final text = '${account["name"]} ${account["email"]} ${account["id"]}'
-          .toLowerCase();
-      return matchesRole && (query.isEmpty || text.contains(query));
-    }).toList();
-  }
-
-  Future<void> _openAddTeacher(BuildContext context) async {
-    Navigator.popUntil(context, (route) => route.isFirst);
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AddTeacherPage()),
-    );
-  }
-
-  void _openAccount(BuildContext context, Map<String, dynamic> account) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AccountDetailsPage(account: account),
-      ),
-    );
-  }
-}
-
-class _AdminHeader extends StatelessWidget {
-  final String name;
-  final int total;
-  final VoidCallback onAddTeacher;
-
-  const _AdminHeader({
-    required this.name,
-    required this.total,
-    required this.onAddTeacher,
-  });
-
-  @override
-  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: scheme.primary,
-            child: Icon(Icons.admin_panel_settings_rounded,
-                color: scheme.onPrimary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'مرحباً $name',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+    final now = DateTime.now();
+    final name = auth.currentUser?.name ?? 'مدير';
+    final h = now.hour;
+    final greet = h < 12 ? 'صباح الخير' : h < 17 ? 'مساء الخير' : 'مساء النور';
+    final months = repo.lastMonths();
+    final today = repo.lessonsOn(now);
+    final running = today.where((l) => l.isRunning).toList();
+    final upcomingToday = today.where((l) => l.isUpcoming).toList();
+    final endedToday = today.where((l) => l.isEnded).toList();
+    final top = repo.topTeachers(now, limit: 5);
+    final prevRev = repo.revenueIn(DateTime(now.year, now.month - 1));
+    final curRev = repo.revenueIn(now);
+    final growth = prevRev == 0 ? null : (curRev - prevRev) / prevRev * 100;
+    final owingStudents = repo.allStudents.where((s) => s.owes).toList()..sort((a, b) => b.balance.compareTo(a.balance));
+    final unlinked = repo.allStudents.where((s) => !s.linked).length;
+    final alerts = <Widget>[];
+
+    if (repo.totalPending > 0) {
+      alerts.add(_Alert(icon: Icons.hourglass_top_rounded, color: TimelineStatus.pending.color, text: '${repo.totalPending} طلب موعد بانتظار موافقة المعلمين', onTap: () => widget.onOpenDirectory(DirView.students, quick: 'pending')));
+    }
+    if (unlinked > 0) {
+      alerts.add(_Alert(icon: Icons.link_off_rounded, color: AppTheme.warning, text: '$unlinked طالب بلا سجل دخول — اضغط للمعالجة', onTap: () => widget.onOpenDirectory(DirView.students, quick: 'unlinked')));
+    }
+    if (repo.orphanStudents.isNotEmpty) {
+      alerts.add(_Alert(icon: Icons.person_search_rounded, color: AppTheme.warning, text: '${repo.orphanStudents.length} سجل طالب بلا معلم', onTap: () => widget.onOpenDirectory(DirView.byTeacher)));
+    }
+    if (repo.disabledCount > 0) {
+      alerts.add(_Alert(icon: Icons.block_rounded, color: scheme.error, text: '${repo.disabledCount} حساب معطّل', onTap: () => widget.onOpenDirectory(DirView.students, quick: 'disabled')));
+    }
+
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: repo.refresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 14, 20, 24),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(colors: [Color(0xFF1E1B4B), Color(0xFF4C1D95), Color(0xFF7C3AED)], begin: AlignmentDirectional.topStart, end: AlignmentDirectional.bottomEnd),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(AppTheme.radiusLg + 4)),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'إدارة $total حساب من مكان واحد',
-                  style: TextStyle(color: scheme.onPrimaryContainer),
-                ),
-              ],
-            ),
-          ),
-          FilledButton.icon(
-            onPressed: onAddTeacher,
-            icon: const Icon(Icons.person_add_alt_1_rounded),
-            label: const Text('إضافة معلم'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatsBand extends StatelessWidget {
-  final List<Map<String, dynamic>> accounts;
-
-  const _StatsBand({required this.accounts});
-
-  @override
-  Widget build(BuildContext context) {
-    final teachers = accounts.where((a) => a["role"] == "teacher").length;
-    final students = accounts.where((a) => a["role"] == "student").length;
-    final admins = accounts.where((a) => a["role"] == "admin").length;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _StatTile(
-          icon: Icons.groups_rounded,
-          label: 'كل الحسابات',
-          value: accounts.length.toString(),
-          color: Colors.indigo,
-        ),
-        _StatTile(
-          icon: Icons.co_present_rounded,
-          label: 'المعلمون',
-          value: teachers.toString(),
-          color: Colors.teal,
-        ),
-        _StatTile(
-          icon: Icons.school_rounded,
-          label: 'الطلاب',
-          value: students.toString(),
-          color: Colors.deepOrange,
-        ),
-        _StatTile(
-          icon: Icons.shield_rounded,
-          label: 'الإدارة',
-          value: admins.toString(),
-          color: Colors.purple,
-        ),
-      ],
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 160),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.24)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: TextStyle(
-                        color: color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900)),
-                Text(label, style: const TextStyle(fontSize: 12)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FiltersBar extends StatelessWidget {
-  final TextEditingController controller;
-  final String roleFilter;
-  final ValueChanged<String> onRoleChanged;
-  final ValueChanged<String> onSearchChanged;
-
-  const _FiltersBar({
-    required this.controller,
-    required this.roleFilter,
-    required this.onRoleChanged,
-    required this.onSearchChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        children: [
-          TextField(
-            controller: controller,
-            onChanged: onSearchChanged,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search_rounded),
-              hintText: 'بحث بالاسم أو البريد أو الكود',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _roleChip('all', 'الكل'),
-                _roleChip('teacher', 'معلم'),
-                _roleChip('student', 'طالب'),
-                _roleChip('admin', 'إدارة'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _roleChip(String value, String label) {
-    return ChoiceChip(
-      selected: roleFilter == value,
-      label: Text(label),
-      onSelected: (_) => onRoleChanged(value),
-    );
-  }
-}
-
-class _AccountCard extends StatelessWidget {
-  final Map<String, dynamic> account;
-  final VoidCallback onOpen;
-
-  const _AccountCard({required this.account, required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final role = account["role"].toString();
-    final color = _roleColor(role);
-    final name = account["name"].toString();
-    final email = account["email"].toString();
-    final initial = name.trim().isEmpty ? '?' : name.trim().characters.first;
-
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onOpen,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundColor: color.withValues(alpha: 0.14),
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('$greet، ${name.split(' ').first}', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 4),
+                              Text(TimelineFormat.fullDate(now), style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.3))),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shield_rounded, color: Colors.white, size: 14),
+                              SizedBox(width: 5),
+                              Text('إدارة', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      email.isEmpty ? account["id"].toString() : email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
+                    const SizedBox(height: 18),
+                    // شريط الحالة اللحظية
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppTheme.radiusMd), border: Border.all(color: Colors.white.withValues(alpha: 0.22))),
+                      child: Row(
+                        children: [
+                          _Live(label: 'جارٍ الآن', value: running.length, icon: Icons.play_circle_fill_rounded, pulse: running.isNotEmpty),
+                          _Live(label: 'متبقٍ اليوم', value: upcomingToday.length, icon: Icons.upcoming_rounded),
+                          _Live(label: 'أُنجز اليوم', value: endedToday.length, icon: Icons.check_circle_rounded),
+                          _Live(label: 'معلمون', value: repo.teachers.length, icon: Icons.co_present_rounded, onTap: () => widget.onOpenDirectory(DirView.teachers)),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    _RoleBadge(role: role, color: color),
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'فتح الحساب',
-                onPressed: onOpen,
-                icon: const Icon(Icons.arrow_back_rounded),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  if (!repo.isReady)
+                    const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+                  else ...[
+                    // ===== أرقام رئيسية =====
+                    StaggeredReveal(
+                      index: 0,
+                      child: Row(
+                        children: [
+                          Expanded(child: GradientStat(icon: Icons.payments_rounded, label: 'إيراد ${TimelineFormat.monthName(now)}', value: curRev, color: AppTheme.success, subtitle: growth == null ? '${repo.endedIn(now)} درس' : '${growth >= 0 ? '▲' : '▼'} ${growth.abs().toStringAsFixed(0)}% عن ${TimelineFormat.monthName(DateTime(now.year, now.month - 1))}')),
+                          const SizedBox(width: 10),
+                          Expanded(child: GradientStat(icon: Icons.trending_down_rounded, label: 'مستحقات على الطلاب', value: repo.totalOwed, color: repo.totalOwed > 0 ? AppTheme.danger : scheme.primary, subtitle: '${owingStudents.length} طالب', onTap: () => widget.onOpenDirectory(DirView.students, quick: 'owing'))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    StaggeredReveal(
+                      index: 1,
+                      child: Row(
+                        children: [
+                          Expanded(child: MiniStat(icon: Icons.school_rounded, label: 'طلاب', value: '${repo.allStudents.length}', color: RoleColors.student)),
+                          const SizedBox(width: 8),
+                          Expanded(child: MiniStat(icon: Icons.menu_book_rounded, label: 'دروس منتهية', value: '${repo.totalEnded}', color: TimelineStatus.ended.color)),
+                          const SizedBox(width: 8),
+                          Expanded(child: MiniStat(icon: Icons.timer_outlined, label: 'ساعات', value: (repo.totalMinutes / 60).toStringAsFixed(0), color: const Color(0xFF8B5CF6))),
+                          const SizedBox(width: 8),
+                          Expanded(child: MiniStat(icon: Icons.account_balance_rounded, label: 'محصَّل', value: repo.totalCollected >= 1000 ? '${(repo.totalCollected / 1000).toStringAsFixed(1)}k' : repo.totalCollected.toStringAsFixed(0), color: scheme.primary)),
+                        ],
+                      ),
+                    ),
+
+                    // ===== تنبيهات =====
+                    if (alerts.isNotEmpty) ...[
+                      const SectionTitle(title: 'يحتاج انتباهك', icon: Icons.notifications_active_rounded),
+                      for (final (i, a) in alerts.indexed) StaggeredReveal(index: 2 + i, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: a)),
+                    ],
+
+                    // ===== الرسم =====
+                    const SectionTitle(title: 'الإيراد خلال 6 أشهر', icon: Icons.bar_chart_rounded),
+                    StaggeredReveal(
+                      index: 3,
+                      child: SoftCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MiniBarChart(
+                              items: [for (final m in months) (label: TimelineFormat.monthName(m.month), value: m.revenue)],
+                              color: scheme.primary,
+                              valueLabel: (v) => v >= 1000 ? '${(v / 1000).toStringAsFixed(1)}k' : v.toStringAsFixed(0),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Icon(Icons.info_outline_rounded, size: 14, color: scheme.outline),
+                                const SizedBox(width: 4),
+                                Expanded(child: Text('إجمالي الإيراد التاريخي ${TimelineFormat.money(repo.totalRevenue)} • متوسط ${TimelineFormat.money(months.fold(0.0, (s, m) => s + m.revenue) / months.length)} شهرياً', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant))),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // ===== أفضل المعلمين =====
+                    if (top.isNotEmpty) ...[
+                      SectionTitle(title: 'المعلمون هذا الشهر', icon: Icons.leaderboard_rounded, actionLabel: 'الكل', onAction: () => widget.onOpenDirectory(DirView.teachers)),
+                      StaggeredReveal(
+                        index: 4,
+                        child: SoftCard(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            children: [
+                              for (final (i, t) in top.indexed)
+                                _RankRow(
+                                  rank: i + 1,
+                                  teacher: t,
+                                  max: top.first.revenueIn(now),
+                                  month: now,
+                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminTeacherPage(teacherCode: t.code))),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    // ===== جارٍ الآن =====
+                    if (running.isNotEmpty) ...[
+                      const SectionTitle(title: 'دروس جارية الآن', icon: Icons.play_circle_rounded),
+                      for (final (i, l) in running.indexed)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: StaggeredReveal(
+                            index: 5 + i,
+                            child: LessonRow(
+                              lesson: l,
+                              subtitle: '${repo.student(l.studentCode)?.name ?? l.studentCode} • ${repo.teacher(l.teacherCode)?.name ?? ''}',
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: l.studentCode))),
+                            ),
+                          ),
+                        ),
+                    ],
+
+                    // ===== أعلى المستحقات =====
+                    if (owingStudents.isNotEmpty) ...[
+                      SectionTitle(title: 'أعلى المستحقات', icon: Icons.trending_down_rounded, actionLabel: 'الكل', onAction: () => widget.onOpenDirectory(DirView.students, quick: 'owing')),
+                      for (final (i, s) in owingStudents.take(5).indexed)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: StaggeredReveal(
+                            index: 6 + i,
+                            child: StudentRow(student: s, showTeacher: true, teacherName: repo.teacher(s.teacherCode)?.name, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: s.code)))),
+                          ),
+                        ),
+                    ],
+
+                    if (repo.teachers.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 30),
+                        child: TimelineEmptyState(
+                          icon: Icons.rocket_launch_rounded,
+                          title: 'ابدأ بإضافة أول معلم',
+                          subtitle: 'بعدها يمكنك إضافة الطلاب ومتابعة كل شيء من هنا.',
+                          action: FilledButton.icon(onPressed: widget.onCreate, icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('إضافة معلم')),
+                        ),
+                      ),
+                    if (repo.error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(repo.error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12))),
+                  ],
+                ]),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _roleColor(String role) {
-    switch (role) {
-      case 'admin':
-        return Colors.purple;
-      case 'teacher':
-        return Colors.teal;
-      case 'student':
-        return Colors.deepOrange;
-      default:
-        return Colors.blueGrey;
-    }
-  }
-}
-
-class _RoleBadge extends StatelessWidget {
-  final String role;
-  final Color color;
-
-  const _RoleBadge({required this.role, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Text(
-        _roleLabel(role),
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
-  String _roleLabel(String role) {
-    switch (role) {
-      case 'admin':
-        return 'إدارة';
-      case 'teacher':
-        return 'معلم';
-      case 'student':
-        return 'طالب';
-      default:
-        return role;
-    }
-  }
-}
-
-class _AdminDrawer extends StatelessWidget {
-  final String name;
-  final String email;
-  final VoidCallback onAddTeacher;
-  final VoidCallback onLogout;
-
-  const _AdminDrawer({
-    required this.name,
-    required this.email,
-    required this.onAddTeacher,
-    required this.onLogout,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          UserAccountsDrawerHeader(
-            accountName: Text(name),
-            accountEmail: Text(email),
-            currentAccountPicture: const CircleAvatar(
-              child: Icon(Icons.admin_panel_settings, size: 32),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.person_add_alt_1_rounded),
-            title: const Text("إضافة معلم"),
-            onTap: onAddTeacher,
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text("تسجيل الخروج"),
-            onTap: onLogout,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminEmptyState extends StatelessWidget {
-  final VoidCallback onAddTeacher;
-
-  const _AdminEmptyState({required this.onAddTeacher});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.manage_accounts_rounded, size: 52),
-            const SizedBox(height: 12),
-            const Text(
-              'لا يوجد بيانات بعد',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onAddTeacher,
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text('إضافة أول معلم'),
             ),
           ],
         ),
@@ -594,19 +567,115 @@ class _AdminEmptyState extends StatelessWidget {
   }
 }
 
-class _NoResults extends StatelessWidget {
-  const _NoResults();
+class _Live extends StatelessWidget {
+  const _Live({required this.label, required this.value, required this.icon, this.pulse = false, this.onTap});
+  final String label;
+  final int value;
+  final IconData icon;
+  final bool pulse;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (pulse) ...[const PulsingDot(color: Colors.white, size: 8), const SizedBox(width: 4)] else Icon(icon, color: Colors.white.withValues(alpha: 0.85), size: 14),
+                const SizedBox(width: 4),
+                AnimatedNumber(value: value.toDouble(), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(label, maxLines: 1, style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 10.5)),
+          ],
+        ),
       ),
-      child: const Text('لا توجد حسابات مطابقة'),
+    );
+  }
+}
+
+class _Alert extends StatelessWidget {
+  const _Alert({required this.icon, required this.color, required this.text, required this.onTap});
+  final IconData icon;
+  final Color color;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SoftCard(
+      onTap: onTap,
+      glow: color,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+          Icon(Icons.chevron_left_rounded, color: scheme.outline),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankRow extends StatelessWidget {
+  const _RankRow({required this.rank, required this.teacher, required this.max, required this.month, required this.onTap});
+  final int rank;
+  final AdminTeacher teacher;
+  final double max;
+  final DateTime month;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rev = teacher.revenueIn(month);
+    final hue = teacherHue(teacher.code);
+    final medal = switch (rank) { 1 => const Color(0xFFF59E0B), 2 => const Color(0xFF9CA3AF), 3 => const Color(0xFFB45309), _ => scheme.outline };
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: medal.withValues(alpha: 0.15), shape: BoxShape.circle),
+              child: Text('$rank', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: medal)),
+            ),
+            const SizedBox(width: 8),
+            InitialAvatar(name: teacher.name, color: hue, size: 32),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(teacher.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+                      Text(TimelineFormat.money(rev), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: hue)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ProgressBar(value: max <= 0 ? 0 : (rev / max).clamp(0, 1), color: hue, height: 5),
+                  const SizedBox(height: 2),
+                  Text('${teacher.endedIn(month)} درس • ${teacher.students.length} طالب', style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
