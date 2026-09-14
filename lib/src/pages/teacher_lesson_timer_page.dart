@@ -7,6 +7,7 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 import '../providers/auth_provider.dart';
 import 'teacher_end_lesson_page.dart';
 import 'teacher_cancel_lesson_page.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 
 class TeacherLessonTimerPage extends StatefulWidget {
@@ -425,7 +426,7 @@ class _TeacherLessonTimerPageState extends State<TeacherLessonTimerPage>
                                         ),
                                         const SizedBox(height: 10),
                                         Text(
-                                          "💰 ${currentAmount.toStringAsFixed(0)} ر.ق",
+                                          "💰 ${currentAmount.toStringAsFixed(0)} ${TimelineFormat.currency}",
                                           style: const TextStyle(
                                               fontSize: 26,
                                               fontWeight: FontWeight.bold,

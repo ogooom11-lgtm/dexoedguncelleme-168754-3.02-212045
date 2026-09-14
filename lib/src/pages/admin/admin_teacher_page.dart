@@ -368,7 +368,7 @@ class _AdminTeacherPageState extends State<AdminTeacherPage> {
   }
 
   void _openStudent(AdminStudent s) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: s.code)));
+    pushAdminPage(context, AdminStudentPage(studentCode: s.code));
   }
 
   Widget _studentsTab(AdminTeacher t, AdminRepository repo, ColorScheme scheme) {

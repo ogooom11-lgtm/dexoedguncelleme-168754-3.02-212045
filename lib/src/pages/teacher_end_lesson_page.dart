@@ -3,6 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/notification_service_wrapper.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherEndLessonPage extends StatefulWidget {
   final Map<String, dynamic> payload;
@@ -193,7 +194,7 @@ class _TeacherEndLessonPageState extends State<TeacherEndLessonPage> {
                               size: 40, color: Colors.green),
                           const SizedBox(height: 8),
                           Text(
-                            "$amount ر.ق", // عرض بدون فاصلات
+                            "$amount ${TimelineFormat.currency}", // عرض بدون فاصلات
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,

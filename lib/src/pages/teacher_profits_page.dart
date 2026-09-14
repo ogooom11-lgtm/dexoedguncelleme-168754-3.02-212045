@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class ProfitsPage extends StatefulWidget {
   const ProfitsPage({super.key});
@@ -188,7 +189,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                     gradient: [Colors.indigo, Colors.blue],
                                     icon: Icons.payments,
                                     title: "إجمالي ربح الشهر",
-                                    value: "${_fmt(totalThis)} ر.ق",
+                                    value: "${_fmt(totalThis)} ${TimelineFormat.currency}",
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -201,9 +202,9 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                     title: "مقارنة بالشهر الماضي",
                                     value: pct == null
                                         ? (diff >= 0
-                                        ? "+${_fmt(diff)} ر.ق"
-                                        : "-${_fmt(diff.abs())} ر.ق")
-                                        : "${diff >= 0 ? "▲" : "▼"} ${_fmt(diff.abs())} ر.ق (${pct!.toStringAsFixed(1)}%)",
+                                        ? "+${_fmt(diff)} ${TimelineFormat.currency}"
+                                        : "-${_fmt(diff.abs())} ${TimelineFormat.currency}")
+                                        : "${diff >= 0 ? "▲" : "▼"} ${_fmt(diff.abs())} ${TimelineFormat.currency} (${pct!.toStringAsFixed(1)}%)",
                                   ),
                                 ),
                               ],
@@ -214,7 +215,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                   gradient: [Colors.indigo, Colors.blue],
                                   icon: Icons.payments,
                                   title: "إجمالي ربح الشهر",
-                                  value: "${_fmt(totalThis)} ر.ق",
+                                  value: "${_fmt(totalThis)} ${TimelineFormat.currency}",
                                 ),
                                 const SizedBox(height: 10),
                                 _FancyStatCard(
@@ -225,9 +226,9 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                   title: "مقارنة بالشهر الماضي",
                                   value: pct == null
                                       ? (diff >= 0
-                                      ? "+${_fmt(diff)} ر.ق"
-                                      : "-${_fmt(diff.abs())} ر.ق")
-                                      : "${diff >= 0 ? "▲" : "▼"} ${_fmt(diff.abs())} ر.ق (${pct!.toStringAsFixed(1)}%)",
+                                      ? "+${_fmt(diff)} ${TimelineFormat.currency}"
+                                      : "-${_fmt(diff.abs())} ${TimelineFormat.currency}")
+                                      : "${diff >= 0 ? "▲" : "▼"} ${_fmt(diff.abs())} ${TimelineFormat.currency} (${pct!.toStringAsFixed(1)}%)",
                                 ),
                               ],
                             ),
@@ -280,7 +281,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                             : _kv(
                                           _students[globalTopStudent.key] ??
                                               "طالب غير معروف",
-                                          "${_fmt(globalTopStudent.value)} ر.ق",
+                                          "${_fmt(globalTopStudent.value)} ${TimelineFormat.currency}",
                                         ),
                                       ),
                                       const SizedBox(height: 12),
@@ -293,7 +294,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                             : _kv(
                                           DateFormat.yMMMd('ar')
                                               .format(globalBestDay.key),
-                                          "${_fmt(globalBestDay.value)} ر.ق",
+                                          "${_fmt(globalBestDay.value)} ${TimelineFormat.currency}",
                                         ),
                                       ),
                                       const SizedBox(height: 12),
@@ -310,7 +311,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                             _kv(
                                               _formatLessonTitle(
                                                   globalTopLesson, _students),
-                                              "${_fmt(num.tryParse((globalTopLesson['amount'] ?? '0').toString()) ?? 0)} ر.ق",
+                                              "${_fmt(num.tryParse((globalTopLesson['amount'] ?? '0').toString()) ?? 0)} ${TimelineFormat.currency}",
                                             ),
                                             const SizedBox(height: 6),
                                             Text(
@@ -356,7 +357,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                       : _kv(
                                     _students[globalTopStudent.key] ??
                                         "طالب غير معروف",
-                                    "${_fmt(globalTopStudent.value)} ر.ق",
+                                    "${_fmt(globalTopStudent.value)} ${TimelineFormat.currency}",
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -369,7 +370,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                       : _kv(
                                     DateFormat.yMMMd('ar')
                                         .format(globalBestDay.key),
-                                    "${_fmt(globalBestDay.value)} ر.ق",
+                                    "${_fmt(globalBestDay.value)} ${TimelineFormat.currency}",
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -386,7 +387,7 @@ class _ProfitsPageState extends State<ProfitsPage> with SingleTickerProviderStat
                                       _kv(
                                         _formatLessonTitle(
                                             globalTopLesson, _students),
-                                        "${_fmt(num.tryParse((globalTopLesson['amount'] ?? '0').toString()) ?? 0)} ر.ق",
+                                        "${_fmt(num.tryParse((globalTopLesson['amount'] ?? '0').toString()) ?? 0)} ${TimelineFormat.currency}",
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
@@ -817,7 +818,7 @@ class _TooltipBubble extends StatelessWidget {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              "الإجمالي: ${_fmtLocal(total)} ر.ق",
+                              "الإجمالي: ${_fmtLocal(total)} ${TimelineFormat.currency}",
                               textAlign: TextAlign.right,
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
@@ -839,7 +840,7 @@ class _TooltipBubble extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               if (r.amount != null)
-                                Text("${_fmtLocal(r.amount!)} ر.ق",
+                                Text("${_fmtLocal(r.amount!)} ${TimelineFormat.currency}",
                                     style: const TextStyle(fontWeight: FontWeight.w600)),
                             ],
                           ),

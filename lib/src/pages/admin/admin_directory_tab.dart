@@ -235,8 +235,8 @@ class AdminDirectoryTabState extends State<AdminDirectoryTab> {
     );
   }
 
-  void _openTeacher(String code) => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminTeacherPage(teacherCode: code)));
-  void _openStudent(String code) => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: code)));
+  void _openTeacher(String code) => pushAdminPage(context, AdminTeacherPage(teacherCode: code));
+  void _openStudent(String code) => pushAdminPage(context, AdminStudentPage(studentCode: code));
 
   // ------------------------------------------------------------------
   // حسب المعلم

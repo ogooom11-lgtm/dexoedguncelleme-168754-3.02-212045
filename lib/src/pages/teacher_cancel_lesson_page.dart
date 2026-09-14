@@ -3,6 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/notification_service_wrapper.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherCancelLessonPage extends StatefulWidget {
   final Map<String, dynamic> payload;
@@ -211,12 +212,12 @@ class _TeacherCancelLessonPageState extends State<TeacherCancelLessonPage> {
                         ],
                       ),
                       Column(
-                        children: const [
-                          Icon(Icons.money_off, size: 40, color: Colors.red),
-                          SizedBox(height: 8),
+                        children: [
+                          const Icon(Icons.money_off, size: 40, color: Colors.red),
+                          const SizedBox(height: 8),
                           Text(
-                            "0 ر.ق",
-                            style: TextStyle(
+                            "0 ${TimelineFormat.currency}",
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: Colors.red,

@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../services/pdf_export_service.dart';
 import '../theme/app_theme.dart';
 import '../services/permission_guard.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherLessonsPage extends StatefulWidget {
   const TeacherLessonsPage({super.key, this.initialStudentId});
@@ -509,7 +510,7 @@ class _TeacherLessonsPageState extends State<TeacherLessonsPage>
                                             CrossAxisAlignment.end,
                                         children: [
                                           Text(
-                                            "$amount ر.ق",
+                                            "$amount ${TimelineFormat.currency}",
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.bold),
                                           ),
@@ -808,7 +809,7 @@ class _TeacherLessonsPageState extends State<TeacherLessonsPage>
                   _tile("التاريخ", date, Icons.event),
                   _tile("الوقت", "$startTime ← $endTime", Icons.schedule),
                   _tile("المدة", duration, Icons.timelapse),
-                  _tile("المبلغ", "$amount ر.ق", Icons.payments),
+                  _tile("المبلغ", "$amount ${TimelineFormat.currency}", Icons.payments),
                   _tile("الحالة", _statusLabel(status), Icons.info),
                   if (status == 'ended')
                     _tile(
@@ -971,14 +972,14 @@ class _TeacherLessonsPageState extends State<TeacherLessonsPage>
           ),
           _summaryChip(
             icon: Icons.payments_outlined,
-            label: "إجمالي: ${fmt.format(totalAmount.toInt())} ر.ق",
+            label: "إجمالي: ${fmt.format(totalAmount.toInt())} ${TimelineFormat.currency}",
             color: Colors.teal.shade700,
           ),
           if (unpaidCount > 0)
             _summaryChip(
               icon: Icons.money_off_outlined,
               label:
-                  "غير المدفوع: ${fmt.format(unpaidAmount.toInt())} ر.ق ($unpaidCount)",
+                  "غير المدفوع: ${fmt.format(unpaidAmount.toInt())} ${TimelineFormat.currency} ($unpaidCount)",
               color: AppTheme.danger,
             ),
         ],

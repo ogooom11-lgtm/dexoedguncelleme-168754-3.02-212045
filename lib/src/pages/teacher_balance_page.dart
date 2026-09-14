@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import 'teacher_lessons_page.dart';
 import 'teacher_pay_page.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherBalancePage extends StatefulWidget {
   const TeacherBalancePage({super.key});
@@ -272,7 +273,7 @@ class _TeacherBalancePageState extends State<TeacherBalancePage> {
             onEnd: () => _displayedTotal = total,
             builder: (context, value, _) {
               return Text(
-                "${fmt.format(value.toInt())} ر.ق",
+                "${fmt.format(value.toInt())} ${TimelineFormat.currency}",
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 30,
@@ -537,7 +538,7 @@ class _TeacherBalancePageState extends State<TeacherBalancePage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    "${fmt.format(row.balance.toInt())} ر.ق",
+                    "${fmt.format(row.balance.toInt())} ${TimelineFormat.currency}",
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: color,

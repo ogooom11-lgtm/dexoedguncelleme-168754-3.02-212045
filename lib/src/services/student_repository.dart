@@ -142,6 +142,10 @@ class StudentRepository extends ChangeNotifier {
   String teacherName = '';
   String teacherPhone = '';
   String teacherEmail = '';
+  /// هل يسمح المعلم بإظهار رقم هاتفه للطلاب؟ (users/$t/showPhoneToStudents — افتراضياً نعم)
+  bool teacherSharesPhone = true;
+  /// الرقم الذي يُعرض فعلياً للطالب (فارغ إذا أخفاه المعلم).
+  String get teacherVisiblePhone => teacherSharesPhone ? teacherPhone : '';
   String studentName = '';
   String gender = '';
   double hourlyRate = 0;
@@ -206,6 +210,7 @@ class StudentRepository extends ChangeNotifier {
         teacherName = (m['name'] ?? '').toString();
         teacherPhone = (m['phone'] ?? '').toString();
         teacherEmail = (m['email'] ?? '').toString();
+        teacherSharesPhone = m['showPhoneToStudents'] != false;
         // بيانات الطالب داخل المعلم
         final students = m['students'];
         if (students is Map && students[studentCode] is Map) {
@@ -251,6 +256,7 @@ class StudentRepository extends ChangeNotifier {
         final m = Map<String, dynamic>.from(v);
         teacherName = (m['name'] ?? '').toString();
         teacherPhone = (m['phone'] ?? '').toString();
+        teacherSharesPhone = m['showPhoneToStudents'] != false;
         final students = m['students'];
         if (students is Map && students[studentCode] is Map) {
           final s = Map<String, dynamic>.from(students[studentCode] as Map);

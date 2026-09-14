@@ -507,7 +507,7 @@ class _AdminDashboardState extends State<_AdminDashboard> {
                                   teacher: t,
                                   max: top.first.revenueIn(now),
                                   month: now,
-                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminTeacherPage(teacherCode: t.code))),
+                                  onTap: () => pushAdminPage(context, AdminTeacherPage(teacherCode: t.code)),
                                 ),
                             ],
                           ),
@@ -526,7 +526,7 @@ class _AdminDashboardState extends State<_AdminDashboard> {
                             child: LessonRow(
                               lesson: l,
                               subtitle: '${repo.student(l.studentCode)?.name ?? l.studentCode} • ${repo.teacher(l.teacherCode)?.name ?? ''}',
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: l.studentCode))),
+                              onTap: () => pushAdminPage(context, AdminStudentPage(studentCode: l.studentCode)),
                             ),
                           ),
                         ),
@@ -540,7 +540,7 @@ class _AdminDashboardState extends State<_AdminDashboard> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: StaggeredReveal(
                             index: 6 + i,
-                            child: StudentRow(student: s, showTeacher: true, teacherName: repo.teacher(s.teacherCode)?.name, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStudentPage(studentCode: s.code)))),
+                            child: StudentRow(student: s, showTeacher: true, teacherName: repo.teacher(s.teacherCode)?.name, onTap: () => pushAdminPage(context, AdminStudentPage(studentCode: s.code))),
                           ),
                         ),
                     ],

@@ -1,10 +1,33 @@
 // lib/src/pages/admin/admin_widgets.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../services/admin_repository.dart';
 import '../../services/timeline_models.dart';
 import '../../theme/app_theme.dart';
 import '../student/student_widgets.dart';
+
+/// يفتح صفحة إدارية مع تمرير [AdminRepository] لها (الصفحات المدفوعة تخرج من شجرة الـ Provider).
+Future<T?> pushAdminPage<T>(BuildContext context, Widget page) {
+  final repo = context.read<AdminRepository>();
+  return Navigator.of(context).push<T>(
+    PageRouteBuilder<T>(
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (_, __, ___) => ChangeNotifierProvider<AdminRepository>.value(value: repo, child: page),
+      transitionsBuilder: (_, anim, __, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0.04, 0), end: Offset.zero).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    ),
+  );
+}
 
 export '../student/student_widgets.dart';
 

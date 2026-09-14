@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../services/permission_guard.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherPayPage extends StatefulWidget {
   final String teacherCode;
@@ -62,7 +63,7 @@ class _TeacherPayPageState extends State<TeacherPayPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              "✅ تم تسجيل دفعة $amount ر.ق (${payer == 'teacher' ? 'المعلم' : 'الطالب'}) - ${method == 'cash' ? 'كاش' : 'بنك'}"),
+              "✅ تم تسجيل دفعة $amount ${TimelineFormat.currency} (${payer == 'teacher' ? 'المعلم' : 'الطالب'}) - ${method == 'cash' ? 'كاش' : 'بنك'}"),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
@@ -84,7 +85,7 @@ class _TeacherPayPageState extends State<TeacherPayPage> {
             ),
             const SizedBox(height: 10),
             Text(
-              "الرصيد: ${widget.balance.toStringAsFixed(2)} ر.ق",
+              "الرصيد: ${widget.balance.toStringAsFixed(2)} ${TimelineFormat.currency}",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,

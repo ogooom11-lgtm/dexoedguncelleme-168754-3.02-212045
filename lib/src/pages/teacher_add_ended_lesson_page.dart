@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 /// ✅ ميزة المعلم: إضافة درس منتهي (درس تمّ إعطاؤه سابقاً ولم يُسجَّل).
 /// - يمكن إضافة أكثر من درس دفعة واحدة.
@@ -227,7 +228,7 @@ class _TeacherAddEndedLessonPageState extends State<TeacherAddEndedLessonPage> {
                   Text('الإجمالي',
                       style: TextStyle(fontSize: 12, color: cs.outline)),
                   Text(
-                    '${total.toStringAsFixed(0)} ر.ق • ${_durationLabel(totalMinutes)}',
+                    '${total.toStringAsFixed(0)} ${TimelineFormat.currency} • ${_durationLabel(totalMinutes)}',
                     style: const TextStyle(
                         fontWeight: FontWeight.w900, fontSize: 16),
                   ),
@@ -381,7 +382,7 @@ class _TeacherAddEndedLessonPageState extends State<TeacherAddEndedLessonPage> {
                 Expanded(
                   child: Text(
                     _hourlyRate > 0
-                        ? 'سعر الساعة: ${_hourlyRate.toStringAsFixed(0)} ر.ق'
+                        ? 'سعر الساعة: ${_hourlyRate.toStringAsFixed(0)} ${TimelineFormat.currency}'
                         : 'لم يتم تحديد سعر ساعة لهذا الطالب — أدخل المبلغ يدوياً',
                     style: TextStyle(fontSize: 12.5, color: cs.outline),
                   ),
@@ -510,7 +511,7 @@ class _TeacherAddEndedLessonPageState extends State<TeacherAddEndedLessonPage> {
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
               ],
               decoration: InputDecoration(
-                labelText: 'المبلغ (ر.ق)',
+                labelText: 'المبلغ (${TimelineFormat.currency})',
                 prefixIcon: const Icon(Icons.attach_money_rounded),
                 suffixIcon: IconButton(
                   tooltip: 'إعادة الحساب من سعر الساعة',

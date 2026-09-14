@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,12 @@ import '../services/notification_service_wrapper.dart';
 import '../services/recurrence_utils.dart';
 import 'today_recurring_page.dart';
 import '../services/permission_guard.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
+import 'recurring_schedules_page.dart';
+import 'teacher_payments_page.dart';
+import 'teacher_profile_page.dart';
+import 'teacher_profits_page.dart';
+import 'timeline/timeline_widgets.dart' show PressScale, PulsingDot;
 
 class HomeTeacher extends StatefulWidget {
   const HomeTeacher({super.key});
@@ -451,6 +458,14 @@ class _HomeTeacherState extends State<HomeTeacher> {
             icon: const Icon(Icons.view_timeline_rounded),
             onPressed: () => Navigator.pushNamed(context, '/teacher_timeline'),
           ),
+          IconButton(
+            tooltip: "حسابي",
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TeacherProfilePage()),
+            ),
+          ),
         ],
       ),
       floatingActionButton: _buildFabColumn(),
@@ -483,17 +498,45 @@ class _HomeTeacherState extends State<HomeTeacher> {
     );
   }
 
+  // ===== عدّادات اليوم =====
+  ({int today, int running, int pending, int upcoming}) get _counts {
+    final now = DateTime.now();
+    int today = 0, running = 0, pending = 0, upcoming = 0;
+    _scheduleMap.forEach((_, v) {
+      if (v is! Map) return;
+      final status = (v['status'] ?? '').toString();
+      final dt = DateTime.tryParse('${v['startTime'] ?? v['date'] ?? ''}');
+      if (dt != null && dt.year == now.year && dt.month == now.month && dt.day == now.day && status != 'canceled') {
+        today++;
+      }
+      if (status == 'started') running++;
+      if (status == 'pending') pending++;
+      if (status == 'scheduled' && dt != null && dt.isAfter(now)) upcoming++;
+    });
+    return (today: today, running: running, pending: pending, upcoming: upcoming);
+  }
+
   // ===== بطاقة الترحيب + الرصيد =====
   Widget _buildHeroCard(BuildContext context, String teacherName) {
     final now = DateTime.now();
     final fmt = NumberFormat('#,###');
+    final c = _counts;
+    final hour = now.hour;
+    final greeting = hour < 12 ? 'صباح الخير ☀️' : (hour < 17 ? 'مساء الخير 👋' : 'مساء النور 🌙');
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: AppTheme.heroGradient(context),
         borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.seed.withValues(alpha: 0.22),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,12 +547,12 @@ class _HomeTeacherState extends State<HomeTeacher> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "مرحباً 👋",
-                      style: TextStyle(
+                    Text(
+                      greeting,
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                        fontSize: 13.5,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -517,96 +560,119 @@ class _HomeTeacherState extends State<HomeTeacher> {
                       teacherName,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 21,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       "${_weekdayNames[now.weekday - 1]} • ${DateFormat('yyyy-MM-dd').format(now)}",
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
+              PressScale(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TeacherProfilePage()),
                 ),
-                child: const Icon(
-                  Icons.school_rounded,
-                  color: Colors.white,
-                  size: 28,
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5),
+                  ),
+                  child: Text(
+                    teacherName.trim().isEmpty ? '؟' : teacherName.trim().characters.first,
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.account_balance_wallet_outlined,
-                    color: Colors.white, size: 26),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "إجمالي الرصيد",
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween<double>(
-                            begin: _animatedBalance, end: _computedBalance),
-                        duration: const Duration(milliseconds: 800),
-                        curve: Curves.easeOut,
-                        builder: (context, value, _) {
-                          return Text(
-                            "${fmt.format(value.toInt())} ر.ق",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          );
-                        },
-                        onEnd: () {
-                          _animatedBalance = _computedBalance;
-                        },
-                      ),
-                    ],
+          const SizedBox(height: 14),
+
+          // شريط حالة اليوم
+          Row(
+            children: [
+              _HeroChip(
+                icon: Icons.today_rounded,
+                label: 'دروس اليوم',
+                value: '${c.today}',
+              ),
+              const SizedBox(width: 8),
+              _HeroChip(
+                icon: Icons.play_circle_fill_rounded,
+                label: 'جارية',
+                value: '${c.running}',
+                live: c.running > 0,
+              ),
+              const SizedBox(width: 8),
+              _HeroChip(
+                icon: Icons.hourglass_top_rounded,
+                label: 'طلبات',
+                value: '${c.pending}',
+                highlight: c.pending > 0,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          PressScale(
+            onTap: () => Navigator.pushNamed(context, '/teacher_balance'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 26),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "المستحق على الطلاب",
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: _animatedBalance, end: _computedBalance),
+                          duration: const Duration(milliseconds: 800),
+                          curve: Curves.easeOut,
+                          builder: (context, value, _) {
+                            return Text(
+                              "${fmt.format(value.toInt())} ${TimelineFormat.currency}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            );
+                          },
+                          onEnd: () {
+                            _animatedBalance = _computedBalance;
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  ),
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/teacher_balance'),
-                  child: const Row(
+                  const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text("التفاصيل",
-                          style: TextStyle(fontWeight: FontWeight.w800)),
-                      Icon(Icons.chevron_left, size: 18),
+                      Text("التفاصيل", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                      Icon(Icons.chevron_left, size: 18, color: Colors.white),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -614,45 +680,68 @@ class _HomeTeacherState extends State<HomeTeacher> {
     );
   }
 
-  // ===== صف الإحصائيات =====
+  // ===== صف الإحصائيات + الاختصارات =====
   Widget _buildStatsRow(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        children: [
-          Expanded(
-            child: _statCard(
-              context,
-              icon: Icons.group_rounded,
-              color: Colors.blue,
-              label: "الطلاب",
-              value: "${_studentsMap.length}",
-              onTap: () => Navigator.pushNamed(context, '/teacher_students'),
-            ),
+    final c = _counts;
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _statCard(
+                  context,
+                  icon: Icons.group_rounded,
+                  color: const Color(0xFF3B82F6),
+                  label: "الطلاب",
+                  value: "${_studentsMap.length}",
+                  onTap: () => Navigator.pushNamed(context, '/teacher_students'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statCard(
+                  context,
+                  icon: Icons.event_note_rounded,
+                  color: const Color(0xFFF59E0B),
+                  label: "قادمة",
+                  value: "${c.upcoming}",
+                  onTap: () => Navigator.pushNamed(context, '/teacher_schedule'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statCard(
+                  context,
+                  icon: Icons.check_circle_outline_rounded,
+                  color: const Color(0xFF10B981),
+                  label: "منتهية",
+                  value: "$_endedLessonsCount",
+                  onTap: () => Navigator.pushNamed(context, '/teacher_lessons'),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _statCard(
-              context,
-              icon: Icons.event_note_rounded,
-              color: Colors.orange,
-              label: "الدروس",
-              value: "${_scheduleMap.length}",
-              onTap: () => Navigator.pushNamed(context, '/teacher_schedule'),
-            ),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              _QuickAction(icon: Icons.view_timeline_rounded, label: 'الجدول', color: const Color(0xFF06B6D4), onTap: () => Navigator.pushNamed(context, '/teacher_timeline')),
+              const SizedBox(width: 8),
+              _QuickAction(icon: Icons.receipt_long_rounded, label: 'الدفعات', color: const Color(0xFFEF4444), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherPaymentsPage()))),
+              const SizedBox(width: 8),
+              _QuickAction(icon: Icons.insights_rounded, label: 'الأرباح', color: const Color(0xFFA855F7), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfitsPage()))),
+              const SizedBox(width: 8),
+              _QuickAction(icon: Icons.event_repeat_rounded, label: 'المتكررة', color: const Color(0xFF84CC16), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RecurringSchedulesPage()))),
+              const SizedBox(width: 8),
+              _QuickAction(icon: Icons.manage_accounts_rounded, label: 'حسابي', color: const Color(0xFF64748B), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherProfilePage()))),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _statCard(
-              context,
-              icon: Icons.check_circle_outline_rounded,
-              color: Colors.teal,
-              label: "منتهية",
-              value: "$_endedLessonsCount",
-              onTap: () => Navigator.pushNamed(context, '/teacher_lessons'),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -665,43 +754,42 @@ class _HomeTeacherState extends State<HomeTeacher> {
     VoidCallback? onTap,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.6),
+    return PressScale(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: color, size: 22),
             ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 26),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  color: scheme.onSurfaceVariant,
-                ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 2),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(anim), child: child),
               ),
-              const SizedBox(height: 4),
-              Text(
+              child: Text(
                 value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18,
-                ),
+                key: ValueKey(value),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1136,6 +1224,7 @@ class _HomeTeacherState extends State<HomeTeacher> {
                             tooltip: "قبول",
                             icon: const Icon(Icons.check, color: Colors.green),
                             onPressed: () async {
+                              HapticFeedback.lightImpact();
                               await FirebaseDatabase.instance
                                   .ref(
                                       "users/$_teacherCodeCached/schedule/${entry.key}")
@@ -1153,6 +1242,7 @@ class _HomeTeacherState extends State<HomeTeacher> {
                             tooltip: "رفض",
                             icon: const Icon(Icons.close, color: Colors.red),
                             onPressed: () async {
+                              HapticFeedback.mediumImpact();
                               await FirebaseDatabase.instance
                                   .ref(
                                       "users/$_teacherCodeCached/schedule/${entry.key}")
@@ -1228,6 +1318,80 @@ class _HomeTeacherState extends State<HomeTeacher> {
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: subtitle != null ? Text(subtitle) : null,
         trailing: trailing,
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// عناصر مساعدة للرئيسية
+// =====================================================================
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.icon, required this.label, required this.value, this.live = false, this.highlight = false});
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool live;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: highlight ? 0.24 : 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: highlight ? Border.all(color: Colors.amber.withValues(alpha: 0.7)) : null,
+        ),
+        child: Row(
+          children: [
+            if (live) const PulsingDot(color: Color(0xFF4ADE80), size: 9) else Icon(icon, color: Colors.white, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, height: 1.1)),
+                  Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10.5), overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({required this.icon, required this.label, required this.color, required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PressScale(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 17, color: color),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: scheme.onSurface)),
+          ],
+        ),
       ),
     );
   }

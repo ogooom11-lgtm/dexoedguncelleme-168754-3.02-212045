@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../providers/auth_provider.dart';
 import '../services/pdf_export_service_payments.dart';
 import '../services/permission_guard.dart';
+import '../services/timeline_models.dart' show TimelineFormat;
 
 class TeacherPaymentsPage extends StatefulWidget {
   const TeacherPaymentsPage({super.key});
@@ -267,7 +268,7 @@ class _TeacherPaymentsPageState extends State<TeacherPaymentsPage>
                       ),
                       const SizedBox(height: 16),
                       _tile("التاريخ", date, Icons.event),
-                      _tile("المبلغ", "$amount ر.ق", Icons.attach_money),
+                      _tile("المبلغ", "$amount ${TimelineFormat.currency}", Icons.attach_money),
                       _tile("الدافع", payer == 'teacher' ? "المعلم" : "الطالب", Icons.person),
                       _tile("طريقة الدفع", method, Icons.credit_card),
                       const SizedBox(height: 16),
@@ -689,7 +690,7 @@ class _TeacherPaymentsPageState extends State<TeacherPaymentsPage>
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        "$amount ر.ق",
+        "$amount ${TimelineFormat.currency}",
         style: TextStyle(
           fontWeight: FontWeight.bold,
           color: payer == 'teacher' ? Colors.red.shade700 : Colors.green.shade700,

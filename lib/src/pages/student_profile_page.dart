@@ -217,20 +217,16 @@ class StudentProfilePage extends StatelessWidget {
                   InfoRow(icon: Icons.person_rounded, label: 'الاسم', value: repo.teacherName.isEmpty ? '—' : repo.teacherName),
                   if (repo.hourlyRate > 0)
                     InfoRow(icon: Icons.payments_outlined, label: 'سعر الساعة', value: TimelineFormat.money(repo.hourlyRate), color: AppTheme.success),
-                  InfoRow(
-                    icon: Icons.call_rounded,
-                    label: 'الهاتف',
-                    value: repo.teacherPhone.isEmpty ? 'غير متاح' : repo.teacherPhone,
-                    trailing: repo.teacherPhone.isEmpty ? null : Icon(Icons.open_in_new_rounded, size: 16, color: scheme.primary),
-                    onTap: repo.teacherPhone.isEmpty ? null : () => _open(context, 'android.intent.action.DIAL', 'tel:${repo.teacherPhone}', repo.teacherPhone),
-                  ),
-                  InfoRow(
-                    icon: Icons.mail_outline_rounded,
-                    label: 'البريد',
-                    value: repo.teacherEmail.isEmpty ? 'غير متاح' : repo.teacherEmail,
-                    trailing: repo.teacherEmail.isEmpty ? null : Icon(Icons.open_in_new_rounded, size: 16, color: scheme.primary),
-                    onTap: repo.teacherEmail.isEmpty ? null : () => _open(context, 'android.intent.action.SENDTO', 'mailto:${repo.teacherEmail}', repo.teacherEmail),
-                  ),
+                  if (repo.teacherVisiblePhone.isNotEmpty)
+                    InfoRow(
+                      icon: Icons.call_rounded,
+                      label: 'الهاتف',
+                      value: repo.teacherVisiblePhone,
+                      trailing: Icon(Icons.open_in_new_rounded, size: 16, color: scheme.primary),
+                      onTap: () => _open(context, 'android.intent.action.DIAL', 'tel:${repo.teacherVisiblePhone}', repo.teacherVisiblePhone),
+                    )
+                  else
+                    const InfoRow(icon: Icons.call_rounded, label: 'التواصل', value: 'عبر المنصة'),
                 ],
               ),
             ),
